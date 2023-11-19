@@ -1,19 +1,19 @@
 //! CP, SCP, DCPなどのバトルでの強さの参考になる指標を計算する
 
-use super::pokemon_info::*;
-use super::pokemon_lv::get_pokemon_lv;
+use super::pokepedia::*;
+use super::cpm::get_cpm;
 
 /// CP(Combat Power, 戦闘力)を計算して返す。
-pub fn calc_cp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> i32 {
-    assert!(0 <= iv_attack && iv_attack <= 15);
-    assert!(0 <= iv_defense && iv_defense <= 15);
-    assert!(0 <= iv_stamina && iv_stamina <= 15);
+pub fn calc_cp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
+    assert!(0 <= attack_iv && attack_iv <= 15);
+    assert!(0 <= defense_iv && defense_iv <= 15);
+    assert!(0 <= stamina_iv && stamina_iv <= 15);
 
-    let pl = get_pokemon_lv(pokemon_lv);
+    let cpm = get_cpm(pokemon_lv);
 
-    let attack = (pi.attack + iv_attack) as f64 * pl.cpm;
-    let defense = (pi.defense + iv_defense) as f64 * pl.cpm;
-    let stamina = (pi.stamina + iv_stamina) as f64 * pl.cpm;
+    let attack = (poke.attack_st + attack_iv) as f64 * cpm;
+    let defense = (poke.defense_st + defense_iv) as f64 * cpm;
+    let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
 
     let cp = (attack * defense.sqrt() * stamina.sqrt() / 10.0) as i32;
 
@@ -26,7 +26,7 @@ pub fn calc_cp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i3
 
 #[test]
 fn test_calc_cp() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let kure = m.get("クレセリア").unwrap();
     assert_eq!(calc_cp(kure, 20.0, 2, 15, 13), 1500);
@@ -41,16 +41,16 @@ fn test_calc_cp() {
 /// 防御力と耐久性を合わせて守る力と考えれば、CPのほうが正しいことになる。
 /// トレーナーバトルなど1対1の対戦で参考となる指標とされているが疑問。
 #[allow(dead_code)]
-pub fn calc_scp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> i32 {
-    assert!(0 <= iv_attack && iv_attack <= 15);
-    assert!(0 <= iv_defense && iv_defense <= 15);
-    assert!(0 <= iv_stamina && iv_stamina <= 15);
+pub fn calc_scp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
+    assert!(0 <= attack_iv && attack_iv <= 15);
+    assert!(0 <= defense_iv && defense_iv <= 15);
+    assert!(0 <= stamina_iv && stamina_iv <= 15);
 
-    let pl = get_pokemon_lv(pokemon_lv);
+    let cpm = get_cpm(pokemon_lv);
 
-    let attack = (pi.attack + iv_attack) as f64 * pl.cpm;
-    let defense = (pi.defense + iv_defense) as f64 * pl.cpm;
-    let stamina = (pi.stamina + iv_stamina) as f64 * pl.cpm;
+    let attack = (poke.attack_st + attack_iv) as f64 * cpm;
+    let defense = (poke.defense_st + defense_iv) as f64 * cpm;
+    let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
 
     let v = attack * defense * stamina;
     let scp = (v.powf(2.0/3.0) / 10.0) as i32;
@@ -64,7 +64,7 @@ pub fn calc_scp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i
 
 #[test]
 fn test_calc_scp() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let kure = m.get("クレセリア").unwrap();
     assert_eq!(calc_scp(kure, 20.0, 2, 15, 13), 1815);
@@ -75,16 +75,16 @@ fn test_calc_scp() {
 
 /// 耐久性のステータスを端数処理して計算したSCP。
 #[allow(dead_code)]
-pub fn calc_scp2(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> i32 {
-    assert!(0 <= iv_attack && iv_attack <= 15);
-    assert!(0 <= iv_defense && iv_defense <= 15);
-    assert!(0 <= iv_stamina && iv_stamina <= 15);
+pub fn calc_scp2(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
+    assert!(0 <= attack_iv && attack_iv <= 15);
+    assert!(0 <= defense_iv && defense_iv <= 15);
+    assert!(0 <= stamina_iv && stamina_iv <= 15);
 
-    let pl = get_pokemon_lv(pokemon_lv);
+    let cpm = get_cpm(pokemon_lv);
 
-    let attack = (pi.attack + iv_attack) as f64 * pl.cpm;
-    let defense = (pi.defense + iv_defense) as f64 * pl.cpm;
-    let stamina = (pi.stamina + iv_stamina) as f64 * pl.cpm;
+    let attack = (poke.attack_st + attack_iv) as f64 * cpm;
+    let defense = (poke.defense_st + defense_iv) as f64 * cpm;
+    let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
 
     let v = attack * defense * stamina.floor();  // calc_scpとの違いはここのfloorだけ
     let scp = (v.powf(2.0/3.0) / 10.0) as i32;
@@ -98,7 +98,7 @@ pub fn calc_scp2(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: 
 
 #[test]
 fn test_calc_scp2() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let kure = m.get("クレセリア").unwrap();
     assert_eq!(calc_scp2(kure, 20.0, 2, 15, 13), 1815);
@@ -111,16 +111,16 @@ fn test_calc_scp2() {
 /// DCPは独自の指標でゲームでは表示されることはない。
 /// DCPは防御力と耐久性を重視した指標となる。
 #[allow(dead_code)]
-pub fn calc_dcp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> i32 {
-    assert!(0 <= iv_attack && iv_attack <= 15);
-    assert!(0 <= iv_defense && iv_defense <= 15);
-    assert!(0 <= iv_stamina && iv_stamina <= 15);
+pub fn calc_dcp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
+    assert!(0 <= attack_iv && attack_iv <= 15);
+    assert!(0 <= defense_iv && defense_iv <= 15);
+    assert!(0 <= stamina_iv && stamina_iv <= 15);
 
-    let pl = get_pokemon_lv(pokemon_lv);
+    let cpm = get_cpm(pokemon_lv);
 
-    let attack = (pi.attack + iv_attack) as f64 * pl.cpm;
-    let defense = (pi.defense + iv_defense) as f64 * pl.cpm;
-    let stamina = (pi.stamina + iv_stamina) as f64 * pl.cpm;
+    let attack = (poke.attack_st + attack_iv) as f64 * cpm;
+    let defense = (poke.defense_st + defense_iv) as f64 * cpm;
+    let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
 
     let v = attack * defense * defense * stamina * stamina;
     let dcp = (v.powf(2.0/5.0) / 10.0) as i32;
@@ -134,7 +134,7 @@ pub fn calc_dcp(pi: &PokemonInfo, pokemon_lv: f32, iv_attack: i32, iv_defense: i
 
 #[test]
 fn test_calc_dcp() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let hapi = m.get("ハピナス").unwrap();
     assert_eq!(calc_dcp(hapi, 40.0, 15, 15, 15), 4340);
@@ -143,12 +143,12 @@ fn test_calc_dcp() {
 /// 引数のlimit_cp以下のCPという条件で、一番高いポケモンレベルを返す。
 /// ポケモンレベル1.0でもlimit_cpを超える場合は、Noneを返す。
 #[allow(dead_code)]
-pub fn calc_pl_limited_by_cp(limit_cp: i32, limit_pl: f32, pi: &PokemonInfo, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> Option<f32> {
+pub fn calc_pl_limited_by_cp(limit_cp: i32, limit_pl: f32, poke: &Pokepedia, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Option<f32> {
     let to = (limit_pl * 2.0) as usize;
 
     for i in 2..=to {
         let pl = i as f32 / 2.0;
-        let cp = calc_cp(pi, pl, iv_attack, iv_defense, iv_stamina);
+        let cp = calc_cp(poke, pl, attack_iv, defense_iv, stamina_iv);
 
         if cp > limit_cp {
             if pl == 1.0 {
@@ -164,7 +164,7 @@ pub fn calc_pl_limited_by_cp(limit_cp: i32, limit_pl: f32, pi: &PokemonInfo, iv_
 
 #[test]
 fn test_calc_pl_limited_by_cp() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let kure = m.get("クレセリア").unwrap();
     assert_eq!(calc_cp(kure, 20.0, 2, 15, 13), 1500);
@@ -180,20 +180,20 @@ fn test_calc_pl_limited_by_cp() {
 /// 一番SCPが高くなる個体値の組み合わせを計算する。
 /// 戻り値はOption<(SCP, ポケモンレベル, 攻撃個体値, 防御個体値, 耐久個体値)>
 #[allow(dead_code)]
-pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_pl: f32, pi: &PokemonInfo) -> Option<(i32, f32, i32, i32, i32)> {
+pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_pl: f32, poke: &Pokepedia) -> Option<(i32, f32, i32, i32, i32)> {
     let mut max_scp = 0;
     let mut max_scp_iv = None;
 
-    for (iv_attack, iv_defense, iv_stamina) in (0..(16*16*16)).map(i2ivs) {
+    for (attack_iv, defense_iv, stamina_iv) in (0..(16*16*16)).map(i2ivs) {
 
-        let pl = calc_pl_limited_by_cp(limit_cp, limit_pl, pi, iv_attack, iv_defense, iv_stamina);
+        let pl = calc_pl_limited_by_cp(limit_cp, limit_pl, poke, attack_iv, defense_iv, stamina_iv);
 
         if let Some(pl) = pl {
-            let scp = calc_scp2(pi, pl, iv_attack, iv_defense, iv_stamina);
+            let scp = calc_scp2(poke, pl, attack_iv, defense_iv, stamina_iv);
 
             if scp > max_scp {
                 max_scp = scp;
-                max_scp_iv = Some((scp, pl, iv_attack, iv_defense, iv_stamina));
+                max_scp_iv = Some((scp, pl, attack_iv, defense_iv, stamina_iv));
             }
         }
     }
@@ -203,7 +203,7 @@ pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_pl: f32, pi: &PokemonI
 
 #[test]
 fn test_calc_max_scp_iv_limited_by_cp() {
-    let m = load_pokemon_info();
+    let m = get_pokepedia_by_name();
 
     let koko = m.get("ココロモリ").unwrap();
     assert_eq!(calc_max_scp_iv_limited_by_cp(1500, 40.0, koko), Some((1476, 38.0, 0, 15, 9)));
@@ -213,9 +213,9 @@ fn test_calc_max_scp_iv_limited_by_cp() {
 /// (0..(16*16*16)).map(i2ivs) で全組み合わせを生成できる
 #[allow(dead_code)]
 fn i2ivs(i: usize) -> (i32, i32, i32) {
-    let iv_attack = ((i & 0xF00) >> 8) as i32;
-    let iv_defense = ((i & 0xF0) >> 4) as i32;
-    let iv_stamina = (i & 0xF) as i32;
+    let attack_iv = ((i & 0xF00) >> 8) as i32;
+    let defense_iv = ((i & 0xF0) >> 4) as i32;
+    let stamina_iv = (i & 0xF) as i32;
 
-    (iv_attack, iv_defense, iv_stamina)
+    (attack_iv, defense_iv, stamina_iv)
 }

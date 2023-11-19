@@ -1,15 +1,15 @@
-mod pokemon_lv;
-mod pokemon_info;
+mod pokepedia;
+mod cpm;
 mod moves;
 mod index;
 
 fn main() {
-    let m = pokemon_info::load_pokemon_info();
-    let hapi = m.get("ハピナス").unwrap();
-    println!("{:?}", hapi);
+    let m  = pokepedia::get_pokepedia_by_name();
+    let koko = m.get("ココロモリ").unwrap();
+    println!("{:?}", koko);
 
-    let pl = pokemon_lv::get_pokemon_lv(1.5);
-    println!("{:?}", pl);
+    let cpm = cpm::get_cpm(1.5);
+    println!("{:?}", cpm);
 
     let fmoves_no_map = moves::get_fast_move_map_by_no();
     let m1 = fmoves_no_map.get("216").unwrap();
