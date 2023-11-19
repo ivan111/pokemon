@@ -1,6 +1,6 @@
 //! 強化によって変化するポケモンレベルに関するデータや関数がある
 
-use super::base_stats::*;
+use super::pokemon_info::*;
 
 /// CP補正値と強化するときに必要な星の砂とアメの個数を持つポケモンレベル構造体。
 #[derive(Debug)]
@@ -18,15 +18,15 @@ pub fn get_pokemon_lv(lv: f32) -> &'static PokemonLv {
 }
 
 /// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
-pub fn calc_pokemon_lv(bs: &BaseStats, cp: i32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> f32 {
+pub fn calc_pokemon_lv(pi: &PokemonInfo, cp: i32, iv_attack: i32, iv_defense: i32, iv_stamina: i32) -> f32 {
     assert!(0 <= iv_attack && iv_attack <= 15);
     assert!(0 <= iv_defense && iv_defense <= 15);
     assert!(0 <= iv_stamina && iv_stamina <= 15);
 
     for pl in &POKEMON_LV {
-        let attack = (bs.attack + iv_attack) as f64 * pl.cpm;
-        let defense = (bs.defense + iv_defense) as f64 * pl.cpm;
-        let stamina = (bs.stamina + iv_stamina) as f64 * pl.cpm;
+        let attack = (pi.attack + iv_attack) as f64 * pl.cpm;
+        let defense = (pi.defense + iv_defense) as f64 * pl.cpm;
+        let stamina = (pi.stamina + iv_stamina) as f64 * pl.cpm;
 
         let mut ccp = (attack * defense.sqrt() * stamina.sqrt() / 10.0) as i32;
 
@@ -39,14 +39,14 @@ pub fn calc_pokemon_lv(bs: &BaseStats, cp: i32, iv_attack: i32, iv_defense: i32,
         }
     }
 
-    panic!("calc_pokemon_lv({}, {}, {}, {}, {}): not found", bs.name, cp, iv_attack, iv_defense, iv_stamina);
+    panic!("calc_pokemon_lv({}, {}, {}, {}, {}): not found", pi.name, cp, iv_attack, iv_defense, iv_stamina);
 }
 
 #[test]
 fn test_calc_pokemon_lv() {
-    let bs_name_map = get_base_stats_map_by_name();
+    let m = load_pokemon_info();
 
-    let saza = bs_name_map.get("サザンドラ").unwrap();
+    let saza = m.get("サザンドラ").unwrap();
 
     assert_eq!(calc_pokemon_lv(saza, 2276, 10, 14, 14), 22.5);
 }

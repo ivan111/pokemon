@@ -1,15 +1,15 @@
 mod pokemon_lv;
-mod base_stats;
+mod pokemon_info;
 mod moves;
 mod index;
 
 fn main() {
+    let m = pokemon_info::load_pokemon_info();
+    let hapi = m.get("ハピナス").unwrap();
+    println!("{:?}", hapi);
+
     let pl = pokemon_lv::get_pokemon_lv(1.5);
     println!("{:?}", pl);
-
-    let bs_no_map = base_stats::get_base_stats_map_by_no();
-    let p1 = bs_no_map.get("0021").unwrap();
-    println!("{:?}", p1);
 
     let fmoves_no_map = moves::get_fast_move_map_by_no();
     let m1 = fmoves_no_map.get("216").unwrap();

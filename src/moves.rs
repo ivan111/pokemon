@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 /// 技の属性
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MoveType {
     Normal,    // ノーマル
     Flare,     // ほのお
@@ -23,6 +23,32 @@ pub enum MoveType {
     Dark,      // あく
     Steel,     // はがね
     Fairy,     // フェアリー
+}
+
+impl From<&str> for MoveType {
+    fn from(s: &str) -> Self {
+        match s {
+            "ノーマル" => MoveType::Normal,
+            "ほのお" => MoveType::Flare,
+            "みず" => MoveType::Water,
+            "でんき" => MoveType::Electric,
+            "くさ" => MoveType::Grass,
+            "こおり" => MoveType::Ice,
+            "かくとう" => MoveType::Fighting,
+            "どく" => MoveType::Poison,
+            "じめん" => MoveType::Ground,
+            "ひこう" => MoveType::Flying,
+            "エスパー" => MoveType::Psychic,
+            "むし" => MoveType::Bug,
+            "いわ" => MoveType::Rock,
+            "ゴースト" => MoveType::Ghost,
+            "ドラゴン" => MoveType::Dragon,
+            "あく" => MoveType::Dark,
+            "はがね" => MoveType::Steel,
+            "フェアリー" => MoveType::Fairy,
+            _ => panic!("MoveType::from(): 知らないタイプ {}", s),
+        }
+    }
 }
 
 // ノーマル技構造体
