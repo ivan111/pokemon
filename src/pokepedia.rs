@@ -22,6 +22,7 @@ pub struct Pokepedia {
 }
 
 /// ポケモンNoからポケモン情報を取得するマップを返す。
+#[allow(dead_code)]
 pub fn get_pokepedia_by_no() -> HashMap<String, &'static Pokepedia> {
     let mut m = HashMap::with_capacity(NUM_POKEPEDIA);
 

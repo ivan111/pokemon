@@ -5,9 +5,9 @@ use crate::cpm::get_cpm;
 
 /// CP(Combat Power, 戦闘力)を計算して返す。
 pub fn calc_cp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
-    assert!(0 <= attack_iv && attack_iv <= 15);
-    assert!(0 <= defense_iv && defense_iv <= 15);
-    assert!(0 <= stamina_iv && stamina_iv <= 15);
+    assert!((0..=15).contains(&attack_iv));
+    assert!((0..=15).contains(&defense_iv));
+    assert!((0..=15).contains(&stamina_iv));
 
     let cpm = get_cpm(pokemon_lv);
 
@@ -42,9 +42,9 @@ fn test_calc_cp() {
 /// トレーナーバトルなど1対1の対戦で参考となる指標とされているが疑問。
 #[allow(dead_code)]
 pub fn calc_scp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
-    assert!(0 <= attack_iv && attack_iv <= 15);
-    assert!(0 <= defense_iv && defense_iv <= 15);
-    assert!(0 <= stamina_iv && stamina_iv <= 15);
+    assert!((0..=15).contains(&attack_iv));
+    assert!((0..=15).contains(&defense_iv));
+    assert!((0..=15).contains(&stamina_iv));
 
     let cpm = get_cpm(pokemon_lv);
 
@@ -76,9 +76,9 @@ fn test_calc_scp() {
 /// 耐久性のステータスを端数処理して計算したSCP。
 #[allow(dead_code)]
 pub fn calc_scp2(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
-    assert!(0 <= attack_iv && attack_iv <= 15);
-    assert!(0 <= defense_iv && defense_iv <= 15);
-    assert!(0 <= stamina_iv && stamina_iv <= 15);
+    assert!((0..=15).contains(&attack_iv));
+    assert!((0..=15).contains(&defense_iv));
+    assert!((0..=15).contains(&stamina_iv));
 
     let cpm = get_cpm(pokemon_lv);
 
@@ -112,9 +112,9 @@ fn test_calc_scp2() {
 /// DCPは防御力と耐久性を重視した指標となる。
 #[allow(dead_code)]
 pub fn calc_dcp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
-    assert!(0 <= attack_iv && attack_iv <= 15);
-    assert!(0 <= defense_iv && defense_iv <= 15);
-    assert!(0 <= stamina_iv && stamina_iv <= 15);
+    assert!((0..=15).contains(&attack_iv));
+    assert!((0..=15).contains(&defense_iv));
+    assert!((0..=15).contains(&stamina_iv));
 
     let cpm = get_cpm(pokemon_lv);
 

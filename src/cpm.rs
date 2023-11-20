@@ -6,7 +6,7 @@ const NUM_CPM: usize = 101;
 
 /// 引数で指定したポケモンレベルからCP補正値を取得する。
 pub fn get_cpm(lv: f32) -> f64 {
-    assert!(0.0 <= lv && lv <= 51.0);
+    assert!((0.0..=51.0).contains(&lv));
 
     let i = ((lv - 1.0) * 2.0) as usize;
     CPM[i]
@@ -21,9 +21,9 @@ fn test_get_cpm() {
 
 /// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
 pub fn calc_pokemon_lv(poke: &Pokepedia, cp: i32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Option<f32> {
-    assert!(0 <= attack_iv && attack_iv <= 15);
-    assert!(0 <= defense_iv && defense_iv <= 15);
-    assert!(0 <= stamina_iv && stamina_iv <= 15);
+    assert!((0..=15).contains(&attack_iv));
+    assert!((0..=15).contains(&defense_iv));
+    assert!((0..=15).contains(&stamina_iv));
 
     for (i, cpm) in (0..NUM_CPM).zip(CPM) {
         let attack = (poke.attack_st + attack_iv) as f64 * cpm;
