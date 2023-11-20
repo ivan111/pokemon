@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use super::moves::*;
+use crate::moves::*;
 
 #[derive(Debug)]
 pub struct Pokepedia {

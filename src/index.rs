@@ -1,7 +1,7 @@
 //! CP, SCP, DCPなどのバトルでの強さの参考になる指標を計算する
 
-use super::pokepedia::*;
-use super::cpm::get_cpm;
+use crate::pokepedia::*;
+use crate::cpm::get_cpm;
 
 /// CP(Combat Power, 戦闘力)を計算して返す。
 pub fn calc_cp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {

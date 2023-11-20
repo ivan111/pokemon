@@ -2,8 +2,17 @@ mod pokepedia;
 mod cpm;
 mod moves;
 mod index;
+mod pokemon;
+
+use std::fs::File;
+use std::io::BufReader;
 
 fn main() {
+    let f = File::open("mypokemon.json").unwrap();
+    let mut reader = BufReader::new(f);
+    let pokemons = pokemon::load_pokemon(&mut reader).unwrap();
+    println!("{:?}", pokemons[1]);
+
     let m  = pokepedia::get_pokepedia_by_name();
     let koko = m.get("ココロモリ").unwrap();
     println!("{:?}", koko);
