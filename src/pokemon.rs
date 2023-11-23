@@ -1,19 +1,25 @@
 //! ポケモンのデータを保持する。
 
 use std::io::Read;
+use std::fmt;
 
 use serde::Deserialize;
 
 use crate::pokepedia::*;
 use crate::moves::*;
 use crate::cpm::*;
+use crate::index::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Pokemon {
     pub poke: &'static Pokepedia,
 
-    pub cp: i32,
     pub lv: f32,
+
+    // 指標
+    pub cp: i32,
+    pub scp: i32,
+    pub dcp: i32,
 
     // 個体値
     pub attack_iv: i32,
@@ -29,8 +35,157 @@ pub struct Pokemon {
 
     // 技
     pub fast_move: &'static FastMove,
+    pub is_stab_fast_move: bool,  // STAB(Same Type Attack Bonus, タイプ一致ボーナス)
+
     pub charge_move1: &'static ChargeMove,
+    pub is_stab_charge_move1: bool,
+
     pub charge_move2: Option<&'static ChargeMove>,
+    pub is_stab_charge_move2: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PokemonError {
+    pub message: String
+}
+
+impl fmt::Display for PokemonError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for PokemonError { }
+
+impl Pokemon {
+    /// cpがマイナスのときは-cpを超えない、CPとポケモンレベルの最大値を自動で計算する
+    pub fn new(name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
+           mut cp: i32, pokemon_lv: Option<f32>, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Result<Self, PokemonError> {
+        let poke = match get_pokepedia_by_name(name) {
+            None => {
+                let message = format!("存在しないポケモン: {}", name);
+                return Err(PokemonError { message });
+            },
+            Some(poke) => poke,
+        };
+
+        if !(0..16).contains(&attack_iv)  {
+            let message = format!("{}: 攻撃の個体値(attack_iv)が範囲外(0～15が正常): {}", poke.name, attack_iv);
+            return Err(PokemonError { message });
+        }
+
+        if !(0..16).contains(&defense_iv)  {
+            let message = format!("{}: 防御の個体値(defense_iv)が範囲外(0～15が正常): {}", poke.name, defense_iv);
+            return Err(PokemonError { message });
+        }
+
+        if !(0..16).contains(&stamina_iv)  {
+            let message = format!("{}: 耐久の個体値(stamina_iv)が範囲外(0～15が正常): {}", poke.name, stamina_iv);
+            return Err(PokemonError { message });
+        }
+
+        let lv;
+
+        if let Some(pl) = pokemon_lv {  // pokemon_lv引数があればそれをポケモンレベルとする。
+            let int_pl = (pl * 2.0).floor() as usize;
+            if !(2..=100).contains(&int_pl) {
+                let message = format!("{}: pokemon_lvが1.0から50.0の間でない。: {}", poke.name, pl);
+                return Err(PokemonError { message });
+            }
+
+            lv = pl;
+            cp = calc_cp(poke, lv, attack_iv, defense_iv, stamina_iv);
+        } else {
+            if cp < 0 {
+                cp = -cp;
+
+                lv = match calc_pl_limited_by_cp(cp, 50.0, poke, attack_iv, defense_iv, stamina_iv) {
+                    Some(lv) => lv,
+                    None => {
+                        let message = format!("{}: CP {} 以下は存在しない。", poke.name, cp);
+                        return Err(PokemonError { message });
+                    }
+                }
+            } else {
+                lv = match calc_pokemon_lv(poke, cp, attack_iv, defense_iv, stamina_iv) {
+                    None => {
+                        let mut msgs = vec![];
+                        msgs.push(format!("{}: ポケモンレベルの取得に失敗(CPか個体値が間違っている)", poke.name));
+
+                        let near_ivs = search_near_iv(poke, cp, attack_iv, defense_iv, stamina_iv);
+                        if !near_ivs.is_empty() {
+                            msgs.push(format!("もしかして、この値?"));
+
+                            for (a, d, s) in near_ivs {
+                                msgs.push(format!("attack_iv = {}, defense_iv = {}, stamina_iv = {}", a, d, s));
+                            }
+                        }
+
+                        return Err(PokemonError { message: msgs.join("\n") });
+                    },
+                    Some(lv) => lv,
+                };
+            }
+        }
+
+        let scp = calc_scp(poke, lv, attack_iv, defense_iv, stamina_iv);
+        let dcp = calc_dcp(poke, lv, attack_iv, defense_iv, stamina_iv);
+
+        let types = poke.get_types();
+
+        let fast_move = match get_fast_move_by_name(fast_move) {
+            None => {
+                let message = format!("{}: 存在しないノーマルアタック(fast_move): {}", poke.name, fast_move);
+                return Err(PokemonError { message });
+            },
+            Some(mv) => mv,
+        };
+
+        let is_stab_fast_move = types.iter().any(|t| t == &fast_move.mtype);
+
+        let charge_move1 = match get_charge_move_by_name(charge_move1) {
+            None => {
+                let message = format!("{}: 存在しないスペシャルアタック(charge_move1): {}", poke.name, charge_move1);
+                return Err(PokemonError { message });
+            },
+            Some(mv) => mv,
+        };
+
+        let is_stab_charge_move1 = types.iter().any(|t| t == &charge_move1.mtype);
+
+        let charge_move2 = match charge_move2 {
+            None => None,
+            Some(mv_str) => {
+                match get_charge_move_by_name(&mv_str) {
+                    None => {
+                        let message = format!("{}: 存在しないスペシャルアタック(charge_move2): {}", poke.name, mv_str);
+                        return Err(PokemonError { message });
+                    },
+                    Some(mv) => Some(mv),
+                }
+            }
+        };
+
+        let is_stab_charge_move2 = if let Some(mv) = charge_move2 {
+            types.iter().any(|t| t == &mv.mtype)
+        } else {
+            false
+        };
+
+        let cpm = get_cpm(lv);
+        let attack = (poke.attack_st + attack_iv) as f64 * cpm;
+        let defense = (poke.defense_st + defense_iv) as f64 * cpm;
+        let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
+        let hp = stamina as i32;
+
+        Ok(Pokemon { poke, lv, cp, scp, dcp, attack_iv, defense_iv, stamina_iv, cpm, attack, defense, stamina, hp, fast_move,
+            is_stab_fast_move, charge_move1, is_stab_charge_move1, charge_move2, is_stab_charge_move2 })
+    }
+
+    pub fn new_limited_by_cp(limit_cp: i32, name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
+                             attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Result<Self, PokemonError> {
+        Pokemon::new(name, fast_move, charge_move1, charge_move2, -limit_cp, None, attack_iv, defense_iv, stamina_iv)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -70,112 +225,18 @@ fn search_near_iv(poke: &Pokepedia, cp: i32, attack_iv: i32, defense_iv: i32, st
 }
 
 pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>, std::io::Error> {
-    let pokepedia_map = get_pokepedia_by_name();
-    let fast_move_map = get_fast_move_map_by_name();
-    let charge_move_map = get_charge_move_map_by_name();
-
     let mut pokemons = vec![];
 
     let data: Vec<PokemonJson> = serde_json::from_reader(reader)?;
 
     for d in data {
-        let poke = match pokepedia_map.get(&d.name) {
-            None => {
-                eprintln!("存在しないポケモン: {}", d.name);
-                continue;
-            },
-            Some(poke) => poke,
-        };
+        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2,
+                                d.cp, None, d.attack_iv, d.defense_iv, d.stamina_iv);
 
-        if d.attack_iv < 0 || d.attack_iv > 15 {
-            eprintln!("{}: 攻撃の個体値(attack_iv)が範囲外(0～15が正常): {}", poke.name, d.attack_iv);
-            continue;
+        match poke {
+            Ok(poke) => pokemons.push(poke),
+            Err(err) => println!("{}", err),
         }
-
-        if d.defense_iv < 0 || d.defense_iv > 15 {
-            eprintln!("{}: 防御の個体値(defense_iv)が範囲外(0～15が正常): {}", poke.name, d.defense_iv);
-            continue;
-        }
-
-        if d.stamina_iv < 0 || d.stamina_iv > 15 {
-            eprintln!("{}: 耐久の個体値(stamina_iv)が範囲外(0～15が正常): {}", poke.name, d.stamina_iv);
-            continue;
-        }
-
-        let lv = match calc_pokemon_lv(poke, d.cp, d.attack_iv, d.defense_iv, d.stamina_iv) {
-            None => {
-                eprintln!("{}: ポケモンレベルの取得に失敗(CPか個体値が間違っている)", poke.name);
-
-                let near_ivs = search_near_iv(poke, d.cp, d.attack_iv, d.defense_iv, d.stamina_iv);
-                if !near_ivs.is_empty() {
-                    eprintln!("もしかして、この値?");
-
-                    for (a, d, s) in near_ivs {
-                        eprintln!("attack_iv = {}, defense_iv = {}, stamina_iv = {}", a, d, s);
-                    }
-                }
-
-                continue;
-            },
-            Some(lv) => lv,
-        };
-
-        let fast_move = match fast_move_map.get(&d.fast_move) {
-            None => {
-                eprintln!("{}: 存在しないノーマルアタック(fast_move): {}", poke.name, d.fast_move);
-                continue;
-            },
-            Some(mv) => mv,
-        };
-
-        let charge_move1 = match charge_move_map.get(&d.charge_move1) {
-            None => {
-                eprintln!("{}: 存在しないスペシャルアタック(charge_move1): {}", poke.name, d.charge_move1);
-                continue;
-            },
-            Some(mv) => mv,
-        };
-
-        let charge_move2 = match d.charge_move2 {
-            None => None,
-            Some(mv_str) => {
-                match charge_move_map.get(&mv_str) {
-                    None => {
-                        eprintln!("{}: 存在しないスペシャルアタック(charge_move2): {}", poke.name, mv_str);
-                        continue;
-                    },
-                    Some(mv) => Some(*mv),
-                }
-            }
-        };
-
-        let cpm = get_cpm(lv);
-        let attack = (poke.attack_st + d.attack_iv) as f64 * cpm;
-        let defense = (poke.defense_st + d.defense_iv) as f64 * cpm;
-        let stamina = (poke.stamina_st + d.stamina_iv) as f64 * cpm;
-
-        let p = Pokemon {
-            poke,
-
-            cp: d.cp,
-            lv,
-
-            attack_iv: d.attack_iv,
-            defense_iv: d.defense_iv,
-            stamina_iv: d.stamina_iv,
-
-            cpm,
-            attack,
-            defense,
-            stamina,
-            hp: stamina as i32,
-
-            fast_move,
-            charge_move1,
-            charge_move2
-        };
-
-        pokemons.push(p);
     }
 
     Ok(pokemons)

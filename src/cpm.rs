@@ -47,10 +47,7 @@ pub fn calc_pokemon_lv(poke: &Pokepedia, cp: i32, attack_iv: i32, defense_iv: i3
 
 #[test]
 fn test_calc_pokemon_lv() {
-    let m = get_pokepedia_by_name();
-
-    let saza = m.get("サザンドラ").unwrap();
-
+    let saza = get_pokepedia_by_name("サザンドラ").unwrap();
     assert_eq!(calc_pokemon_lv(saza, 2276, 10, 14, 14), Some(22.5));
     assert_eq!(calc_pokemon_lv(saza, 2277, 10, 14, 14), None);
 }

@@ -1,6 +1,7 @@
 //! CP, SCP, DCPなどのバトルでの強さの参考になる指標を計算する
 
 use crate::pokepedia::*;
+use crate::pokemon::Pokemon;
 use crate::cpm::get_cpm;
 
 /// CP(Combat Power, 戦闘力)を計算して返す。
@@ -15,7 +16,7 @@ pub fn calc_cp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i3
     let defense = (poke.defense_st + defense_iv) as f64 * cpm;
     let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
 
-    let cp = (attack * defense.sqrt() * stamina.sqrt() / 10.0) as i32;
+    let cp = (attack * (defense * stamina).sqrt() / 10.0) as i32;
 
     if cp < 10 {
         10
@@ -26,20 +27,69 @@ pub fn calc_cp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i3
 
 #[test]
 fn test_calc_cp() {
-    let m = get_pokepedia_by_name();
-
-    let kure = m.get("クレセリア").unwrap();
+    let kure = get_pokepedia_by_name("クレセリア").unwrap();
     assert_eq!(calc_cp(kure, 20.0, 2, 15, 13), 1500);
 
-    let fude = m.get("フーディン").unwrap();
+    let fude = get_pokepedia_by_name("フーディン").unwrap();
     assert_eq!(calc_cp(fude, 18.0, 1, 15, 15), 1495);
+}
+
+const MAX_ACP_TURNS: i32 = 1000;
+
+/// 1ターンあたりの平均的なわざの威力を計算する
+fn calc_power_per_turn(poke: &Pokemon) -> f64 {
+    let mut num_turns = 0;
+    let mut sum_power = 0.0;
+    let mut energy = 0;
+
+    let types = poke.poke.get_types();
+
+    while num_turns < MAX_ACP_TURNS {
+        if energy >= poke.charge_move1.tb_energy {
+            energy = std::cmp::max(0, energy - poke.charge_move1.tb_energy);
+            sum_power += poke.charge_move1.get_real_tb_power(&types);
+            num_turns += 1;
+        } else {
+            energy = std::cmp::min(energy + poke.fast_move.tb_energy, 100);
+            sum_power += poke.fast_move.get_real_tb_power(&types);
+            num_turns += poke.fast_move.tb_turns;
+        }
+    }
+
+    sum_power / num_turns as f64
+}
+
+/// ACP(Advanced Combat Power, 発展型戦闘力)を計算して返す。
+/// ACPは自分が指標でゲームでは表示されることはない。
+/// ACPは攻撃力・防御力・耐久性に加えて、技の威力も考慮に入れる。
+#[allow(dead_code)]
+pub fn calc_acp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32,
+                fast_move: &str, charge_move1: &str, charge_move2: Option<String>) -> i32 {
+
+    let scp = calc_scp(poke, pokemon_lv, attack_iv, defense_iv, stamina_iv);
+
+    let p = Pokemon::new(poke.name, fast_move, charge_move1, charge_move2, 0, Some(pokemon_lv),
+                         attack_iv, defense_iv, stamina_iv).unwrap();
+
+    let ppt = calc_power_per_turn(&p);
+    println!("ppt = {:.2}", ppt);
+
+    (scp as f64 * ppt / 10.0).floor() as i32
+}
+
+#[test]
+fn test_calc_acp() {
+    let kure = get_pokepedia_by_name("クレセリア").unwrap();
+    assert_eq!(calc_acp(kure, 20.0, 2, 15, 13, "ねんりき", "みらいよち", None), 1982);
+
+    let fude = get_pokepedia_by_name("フーディン").unwrap();
+    assert_eq!(calc_acp(fude, 18.0, 1, 15, 15, "ねんりき", "みらいよち", None), 1399);
 }
 
 /// SCP(Standard Combat Power, 標準戦闘力)を計算して返す。
 /// SCPは独自の指標でゲームでは表示されることはない。
-/// SCPは攻撃力・防御力・耐久性をバランスよく表した指標とされているが、
-/// 防御力と耐久性を合わせて守る力と考えれば、CPのほうが正しいことになる。
-/// トレーナーバトルなど1対1の対戦で参考となる指標とされているが疑問。
+/// SCPは攻撃力・防御力・耐久性をバランスよく表した指標。
+/// トレーナーバトルなど1対1の対戦で参考となる。
 #[allow(dead_code)]
 pub fn calc_scp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> i32 {
     assert!((0..=15).contains(&attack_iv));
@@ -64,12 +114,10 @@ pub fn calc_scp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i
 
 #[test]
 fn test_calc_scp() {
-    let m = get_pokepedia_by_name();
-
-    let kure = m.get("クレセリア").unwrap();
+    let kure = get_pokepedia_by_name("クレセリア").unwrap();
     assert_eq!(calc_scp(kure, 20.0, 2, 15, 13), 1815);
 
-    let fude = m.get("フーディン").unwrap();
+    let fude = get_pokepedia_by_name("フーディン").unwrap();
     assert_eq!(calc_scp(fude, 18.0, 1, 15, 15), 1281);
 }
 
@@ -98,12 +146,10 @@ pub fn calc_scp2(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: 
 
 #[test]
 fn test_calc_scp2() {
-    let m = get_pokepedia_by_name();
-
-    let kure = m.get("クレセリア").unwrap();
+    let kure = get_pokepedia_by_name("クレセリア").unwrap();
     assert_eq!(calc_scp2(kure, 20.0, 2, 15, 13), 1815);
 
-    let fude = m.get("フーディン").unwrap();
+    let fude = get_pokepedia_by_name("フーディン").unwrap();
     assert_eq!(calc_scp2(fude, 18.0, 1, 15, 15), 1279);
 }
 
@@ -134,13 +180,11 @@ pub fn calc_dcp(poke: &Pokepedia, pokemon_lv: f32, attack_iv: i32, defense_iv: i
 
 #[test]
 fn test_calc_dcp() {
-    let m = get_pokepedia_by_name();
-
-    let hapi = m.get("ハピナス").unwrap();
+    let hapi = get_pokepedia_by_name("ハピナス").unwrap();
     assert_eq!(calc_dcp(hapi, 40.0, 15, 15, 15), 4340);
 }
 
-/// 引数のlimit_cp以下のCPという条件で、一番高いポケモンレベルを返す。
+/// 引数のlimit_cp以下のCPという条件で、一番PLの高いポケモンレベルを返す。
 /// ポケモンレベル1.0でもlimit_cpを超える場合は、Noneを返す。
 #[allow(dead_code)]
 pub fn calc_pl_limited_by_cp(limit_cp: i32, limit_pl: f32, poke: &Pokepedia, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Option<f32> {
@@ -164,14 +208,12 @@ pub fn calc_pl_limited_by_cp(limit_cp: i32, limit_pl: f32, poke: &Pokepedia, att
 
 #[test]
 fn test_calc_pl_limited_by_cp() {
-    let m = get_pokepedia_by_name();
-
-    let kure = m.get("クレセリア").unwrap();
+    let kure = get_pokepedia_by_name("クレセリア").unwrap();
     assert_eq!(calc_cp(kure, 20.0, 2, 15, 13), 1500);
     assert_eq!(calc_pl_limited_by_cp(1500, 50.0, kure, 2, 15, 13), Some(20.0));
     assert_eq!(calc_pl_limited_by_cp(5000, 50.0, kure, 2, 15, 13), Some(50.0));
 
-    let hapi = m.get("ハピナス").unwrap();
+    let hapi = get_pokepedia_by_name("ハピナス").unwrap();
     assert_eq!(calc_cp(hapi, 1.0, 15, 15, 15), 39);
     assert_eq!(calc_pl_limited_by_cp(39, 40.0, hapi, 15, 15, 15), Some(1.0));
     assert_eq!(calc_pl_limited_by_cp(38, 40.0, hapi, 15, 15, 15), None);
@@ -203,9 +245,7 @@ pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_pl: f32, poke: &Pokepe
 
 #[test]
 fn test_calc_max_scp_iv_limited_by_cp() {
-    let m = get_pokepedia_by_name();
-
-    let koko = m.get("ココロモリ").unwrap();
+    let koko = get_pokepedia_by_name("ココロモリ").unwrap();
     assert_eq!(calc_max_scp_iv_limited_by_cp(1500, 40.0, koko), Some((1476, 38.0, 0, 15, 9)));
 }
 
