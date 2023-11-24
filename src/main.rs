@@ -25,8 +25,12 @@ fn main() {
     //let team2 = vec![pokemons[0].clone(), pokemons[1].clone(), pokemons[2].clone()];
     let team2 = vec![pokemons[1].clone()];
     let mut battle = battle::Battle::new("たけし".to_string(), team1, "さとし".to_string(), team2);
+
+    battle.start();
+    /*
     battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
     battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
     battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
     battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
+    */
 }
