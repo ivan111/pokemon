@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use rand::prelude::*;
 
-use crate::pokemon::Pokemon;
+use crate::pokepedia::Pokepedia;
+use crate::pokemon::{Pokemon, Stats, IVs};
+use crate::types::Type;
 use crate::moves::*;
 
 macro_rules! debug_print {
@@ -95,17 +97,17 @@ fn strategy(player: &Player) -> Action {
     }
 }
 
-fn shield_strategy(player: &Player) -> bool {
+fn shield_strategy(_player: &Player) -> bool {
     true
 }
 
-fn switch_strategy(player: &Player) -> usize {
+fn switch_strategy(_player: &Player) -> usize {
     0
 }
 
 impl Battle {
     pub fn new(name0: String, team0: Vec<Pokemon>, name1: String, team1: Vec<Pokemon>) -> Self {
-        assert!(team0.len() >= 1 && team1.len() >= 1);
+        assert!(!team0.is_empty() && !team1.is_empty());
 
         let player0 = Player::new(name0, team0);
         let player1 = Player::new(name1, team1);
@@ -133,27 +135,29 @@ impl Battle {
         }
     }
 
-    pub fn get_state(&self) -> &State {
+    pub fn state(&self) -> &State {
         self.states.last().unwrap()
     }
 
     pub fn is_ended(&self) -> bool {
-        let state = self.get_state();
+        let state = self.state();
 
         state.player0.is_ended() || state.player1.is_ended()
     }
 
+    /*
     pub fn print_timeline(&self) {
         for state in &self.states {
         }
     }
+    */
 
     pub fn start(&mut self) {
         let mut act0;
         let mut act1;
 
         {
-            let state = self.get_state();
+            let state = self.state();
             act0 = (self.strategy0)(&state.player0);
             act1 = (self.strategy1)(&state.player1);
         }
@@ -161,7 +165,7 @@ impl Battle {
         let mut i = 0;
 
         while self.do_action([act0, act1]) {
-            let state = self.get_state();
+            let state = self.state();
             act0 = (self.strategy0)(&state.player0);
             act1 = (self.strategy1)(&state.player1);
 
@@ -175,7 +179,10 @@ impl Battle {
 
     /// 戻り値: true: ゲーム継続中, false: ゲーム終了
     pub fn do_action(&mut self, actions: [Action; 2]) -> bool {
-        let mut state = self.get_state().clone();
+        let mut state = self.state().clone();
+
+        // 1ターン技か？
+        let mut use_1turn_move = [false, false];
 
         // スペシャルアタック使用確認。 0: わざ1, 1: わざ2, 2: 使用しない
         let mut use_charge_move: [usize; 2] = [2, 2];
@@ -197,7 +204,7 @@ impl Battle {
             debug_println!("Debug: player {}: dur_turns = {}, switch_ms = {}, num_shields = {}", p.name, p.dur_turns, p.switch_ms, p.num_shields);
 
             let poke = p.poke();
-            debug_print!("Debug:   {}: HP = {} / {}, energy = {}, buff = {:?}", p.poke_name(), poke.hp, poke.poke.hp, poke.energy, poke.buff);
+            debug_print!("Debug:   {}: HP = {} / {}, energy = {}, buff = {:?}", p.poke_name(), poke.hp(), poke.base_hp(), poke.energy, poke.buff);
             debug_println!(", in_fast_move = {}, dur_turns =  {}", p.in_fast_move, p.dur_turns);
         }
 
@@ -228,14 +235,18 @@ impl Battle {
                         Action::FastMove => {
                             if !p.in_fast_move {  // 硬直中でないなら
                                 p.in_fast_move = true;
-                                p.dur_turns = p.poke().poke.fast_move.tb_turns - 1;
+                                p.dur_turns = p.poke().fast_move().turns() - 1;
 
-                                debug_println!("Debug: {}は{}を使った。", p.poke_name(), p.poke().poke.fast_move.name);
+                                if p.dur_turns == 0 {
+                                    use_1turn_move[player_i] = true;
+                                }
+
+                                debug_println!("Debug: {}は{}を使った。", p.poke_name(), p.poke().fast_move().name());
                             }
                         },
 
                         Action::ChargeMove(i @ (0 | 1)) => {
-                            if let Some(mv) = p.poke().get_charge_move(i as usize) {
+                            if let Some(mv) = p.poke().charge_move(i as usize) {
                                 if p.poke().can_charge_move(i as usize) {
                                     if p.in_fast_move {
                                         p.set_pending(actions[player_i]);
@@ -243,7 +254,7 @@ impl Battle {
                                         use_charge_move[player_i] = i as usize;
                                     }
                                 } else {
-                                    debug_println!("Debug: [{}] {}に必要なエネルギーが足りない", p.name, mv.name);
+                                    debug_println!("Debug: [{}] {}に必要なエネルギーが足りない", p.name, mv.name());
                                 }
                             } else {
                                 debug_println!("Debug: [{}] スペシャルアタック{}が存在しない", p.name, i);
@@ -262,7 +273,13 @@ impl Battle {
         let switch_strategy = [self.switch0, self.switch1];
         let shield_strategy = [self.shield0, self.shield1];
 
-        state.do_fast_move();
+        // ノーマルアタックとスペシャルアタックが同時に使われた場合は、
+        // ノーマルアタックが有効になることも、無効になることもあるらしい。
+        // このソフトの仕様では常に有効になる。
+
+        // １ターン技はランダムに先行が決まる仕様にしている
+        // 本物は先に打った方が先行になる
+        state.do_1turn_move(use_1turn_move);
         incr_ms += state.switch_if_faint(switch_strategy);
 
         // スペシャルアタック。switch_if_faintを含む
@@ -276,10 +293,7 @@ impl Battle {
 
         state.increment_turns(incr_ms);
 
-        let ret_val = match state.phase {
-            Phase::GameOver(_) | Phase::TimeOver(_) => false,
-            _ => true
-        };
+        let ret_val = !matches!(state.phase, Phase::GameOver(_) | Phase::TimeOver(_));
 
         self.states.push(state);
         self.actions.push(actions);
@@ -293,7 +307,7 @@ pub const CHARGE_MOVE_MS: i32 = 20 * MS_PER_TURN;
 pub const SWITCH_MS: i32 = 10 * MS_PER_TURN;
 
 impl State {
-    fn get_elapsed_ms(&self) -> i32 {
+    fn elapsed_ms(&self) -> i32 {
         self.turn * MS_PER_TURN
     }
 
@@ -321,17 +335,48 @@ impl State {
         vec![&mut self.player0, &mut self.player1]
     }
 
+    fn do_1turn_move(&mut self, use_1turn_move: [bool; 2]) {
+        let p0 = &mut self.player0;
+        let p1 = &mut self.player1;
+
+        if rand::random() {
+            if use_1turn_move[0] && p0.in_fast_move && p0.dur_turns == 0 {
+                p0.team[p0.cur_poke].do_fast_move(&mut p1.team[p1.cur_poke]);
+                p0.in_fast_move = false;
+            }
+
+            let is_faint = p1.team[p1.cur_poke].is_faint();
+
+            if use_1turn_move[1] && p1.in_fast_move && p1.dur_turns == 0 && !is_faint {
+                p1.team[p1.cur_poke].do_fast_move(&mut p0.team[p0.cur_poke]);
+                p1.in_fast_move = false;
+            }
+        } else {
+            if use_1turn_move[1] && p1.in_fast_move && p1.dur_turns == 0 {
+                p1.team[p1.cur_poke].do_fast_move(&mut p0.team[p0.cur_poke]);
+                p1.in_fast_move = false;
+            }
+
+            let is_faint = p0.team[p0.cur_poke].is_faint();
+
+            if use_1turn_move[0] && p0.in_fast_move && p0.dur_turns == 0 && !is_faint {
+                p0.team[p0.cur_poke].do_fast_move(&mut p1.team[p1.cur_poke]);
+                p0.in_fast_move = false;
+            }
+        }
+    }
+
     fn do_fast_move(&mut self) {
         let p0 = &mut self.player0;
         let p1 = &mut self.player1;
 
         if p0.in_fast_move && p0.dur_turns == 0 {
-            p0.team[p0.cur_poke].fast_move(&mut p1.team[p1.cur_poke]);
+            p0.team[p0.cur_poke].do_fast_move(&mut p1.team[p1.cur_poke]);
             p0.in_fast_move = false;
         }
 
         if p1.in_fast_move && p1.dur_turns == 0 {
-            p1.team[p1.cur_poke].fast_move(&mut p0.team[p0.cur_poke]);
+            p1.team[p1.cur_poke].do_fast_move(&mut p0.team[p0.cur_poke]);
             p1.in_fast_move = false;
         }
     }
@@ -349,8 +394,8 @@ impl State {
 
         match use_charge_move {
             [i0 @ (0 | 1), i1 @ (0 | 1)] => {  // ２人とも使う
-                let atk0 = self.player0.poke().poke.attack.floor() as u32;
-                let atk1 = self.player1.poke().poke.attack.floor() as u32;
+                let atk0 = self.player0.poke().stats().attack.floor() as u32;
+                let atk1 = self.player1.poke().stats().attack.floor() as u32;
 
                 if atk0 == atk1 {  // random
                     if rand::random() {
@@ -394,7 +439,7 @@ impl State {
 
         for (player_i, mv_i) in v {
             let opponent_i = if player_i == 0 { 1 } else { 0 };
-            let shield = num_shields[opponent_i] > 0 && (shield_strategy[opponent_i])(&self.player(opponent_i));
+            let shield = num_shields[opponent_i] > 0 && (shield_strategy[opponent_i])(self.player(opponent_i));
 
             {
                 let p0 = &mut self.player0;
@@ -403,14 +448,14 @@ impl State {
                 let poke1 = p1.poke_mut();
 
                 if player_i == 0 {
-                    poke0.charge_move(mv_i, poke1, 1.0, shield);
+                    poke0.do_charge_move(mv_i, poke1, 1.0, shield);
                     p1.dur_turns = 0; // CCT(差し込み)
 
                     if shield {
                         p1.num_shields = std::cmp::max(0, p1.num_shields - 1);
                     }
                 } else {
-                    poke1.charge_move(mv_i, poke0, 1.0, shield);
+                    poke1.do_charge_move(mv_i, poke0, 1.0, shield);
                     p0.dur_turns = 0; // CCT(差し込み)
 
                     if shield {
@@ -433,10 +478,8 @@ impl State {
         let mut fainted = vec![];  // 交換が必要なプレイヤーの番号を入れる
 
         for (player_i, p) in self.players_mut().into_iter().enumerate() {
-            if p.poke().is_faint() {
-                if p.get_num_remains() > 0 {
-                    fainted.push(player_i);
-                }
+            if p.poke().is_faint() && p.num_remains() > 0 {
+                fainted.push(player_i);
             }
         }
 
@@ -530,10 +573,10 @@ impl Player {
     }
 
     pub fn poke_name(&self) -> &'static str {
-        self.team[self.cur_poke].poke.poke.name
+        self.team[self.cur_poke].name()
     }
 
-    pub fn get_num_remains(&self) -> i32 {
+    pub fn num_remains(&self) -> i32 {
         self.team.iter().filter(|p| p.hp > 0).count().try_into().unwrap()
     }
 
@@ -588,7 +631,7 @@ impl Player {
         self.dur_turns = 0;
         self.pending = Action::None;
 
-        return true;
+        true
     }
 
     // ポケモンを倒されて、次のポケモンを選ぶ時間が12秒与えられるが、
@@ -620,16 +663,16 @@ impl Player {
 
 #[test]
 fn test_player() {
-    let p0 = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, 10, 9, 12).unwrap();
-    let p1 = Pokemon::new("ブラッキー", "バークアウト", "あくのはどう", None, 1498, None, 2, 14, 0).unwrap();
-    let p2 = Pokemon::new("ナマズン", "みずでっぽう", "どろばくだん", None, 1474, None, 8, 15, 14).unwrap();
+    let p0 = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, (10, 9, 12)).unwrap();
+    let p1 = Pokemon::new("ブラッキー", "バークアウト", "あくのはどう", None, 1498, None, (2, 14, 0)).unwrap();
+    let p2 = Pokemon::new("ナマズン", "みずでっぽう", "どろばくだん", None, 1474, None, (8, 15, 14)).unwrap();
 
     let mut p = Player::new(String::from("test"), vec![p0, p1, p2]);
 
     assert_eq!(p.poke_name(), "ココロモリ");
-    assert_eq!(p.poke().poke.fast_move.name, "エアスラッシュ");
-    assert_eq!(p.poke().poke.charge_move1.name, "サイコファング");
-    assert_eq!(p.poke().poke.charge_move2.is_none(), true);
+    assert_eq!(p.poke().fast_move().name(), "エアスラッシュ");
+    assert_eq!(p.poke().charge_move1().name(), "サイコファング");
+    assert_eq!(p.poke().charge_move2().is_none(), true);
 
     p.team[0].add_buff(1, 1);
     assert_eq!(p.poke().buff, (1, 1));
@@ -641,14 +684,14 @@ fn test_player() {
     p.force_switch();
     assert_eq!(p.poke_name(), "ブラッキー");
 
-    assert_eq!(p.get_num_remains(), 3);
+    assert_eq!(p.num_remains(), 3);
     assert_eq!(p.is_ended(), false);
 }
 
 /// ランク補正
 pub const RANK_MUL: [f64; 9] = [0.5, 4.0/7.0, 2.0/3.0, 4.0/5.0, 1.0, 5.0/4.0, 3.0/2.0, 7.0/4.0, 2.0];
 
-pub fn get_rank_mul(buff: i32) -> f64 {
+pub fn rank_mul(buff: i32) -> f64 {
     assert!((-4..=4).contains(&buff));
 
     RANK_MUL[(buff + 4) as usize]
@@ -658,7 +701,7 @@ pub const TRAINER_BATTLE_BONUS: f64 = 1.3;  // トレーナーバトルボーナ
 
 impl BattlePokemon {
     pub fn new(poke: Arc<Pokemon>) -> Self {
-        let hp = poke.hp;
+        let hp = poke.hp();
 
         BattlePokemon {
             poke,
@@ -667,6 +710,80 @@ impl BattlePokemon {
             buff: (0, 0),
             is_disable_type_effect: false,
         }
+    }
+
+    pub fn dict(&self) -> &'static Pokepedia {
+        self.poke.dict()
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.poke.name()
+    }
+
+    pub fn types(&self) -> Vec<Type> {
+        self.poke.types()
+    }
+
+    pub fn base_stats(&self) -> Stats {
+        self.poke.base_stats()
+    }
+
+    pub fn lv(&self) -> f32 {
+        self.poke.lv()
+    }
+
+    pub fn ivs(&self) -> IVs {
+        self.poke.ivs()
+    }
+
+    pub fn fast_move(&self) -> &'static FastMove {
+        self.poke.fast_move()
+    }
+
+    pub fn charge_move1(&self) -> &'static ChargeMove {
+        self.poke.charge_move1()
+    }
+
+    pub fn charge_move2(&self) -> Option<&'static ChargeMove> {
+        self.poke.charge_move2()
+    }
+
+    // iが0ならスペシャルアタック1を返す
+    // iが1ならスペシャルアタック2を返す
+    pub fn charge_move(&self, i: usize) -> Option<&'static ChargeMove> {
+        match i {
+            0 => Some(self.charge_move1()),
+            1 => self.charge_move2(),
+            _ => None,
+        }
+    }
+
+    pub fn cp(&self) -> i32 {
+        self.poke.cp()
+    }
+
+    pub fn scp(&self) -> i32 {
+        self.poke.scp()
+    }
+
+    pub fn dcp(&self) -> i32 {
+        self.poke.dcp()
+    }
+
+    pub fn cpm(&self) -> f64 {
+        self.poke.cpm()
+    }
+
+    pub fn stats(&self) -> Stats {
+        self.poke.stats()
+    }
+
+    pub fn base_hp(&self) -> i32 {
+        self.poke.hp()
+    }
+
+    pub fn hp(&self) -> i32 {
+        self.hp
     }
 
     /// ポケモンは瀕死か？
@@ -689,16 +806,6 @@ impl BattlePokemon {
         (self.buff.0 - prev.0, self.buff.1 - prev.1)
     }
 
-    // iが0ならスペシャルアタック1を返す
-    // iが1ならスペシャルアタック2を返す
-    pub fn get_charge_move(&self, i: usize) -> Option<&'static ChargeMove> {
-        match i {
-            0 => Some(self.poke.charge_move1),
-            1 => self.poke.charge_move2,
-            _ => None,
-        }
-    }
-
     pub fn can_charge_move(&self, i: usize) -> bool {
         match i {
             0 => self.can_charge_move1(),
@@ -710,57 +817,56 @@ impl BattlePokemon {
 
     /// スペシャルアタック1を実行できるか？
     pub fn can_charge_move1(&self) -> bool {
-        self.energy >= self.poke.charge_move1.tb_energy
+        self.energy >= self.charge_move1().energy()
     }
 
     /// スペシャルアタック2を実行できるか？
     pub fn can_charge_move2(&self) -> bool {
-        if let Some(mv) = self.poke.charge_move2 {
-            self.energy >= mv.tb_energy
+        if let Some(mv) = self.charge_move2() {
+            self.energy >= mv.energy()
         } else {
             false
         }
     }
 
     /// ノーマルアタックを実行する
-    pub fn fast_move(&mut self, opponent: &mut Self) -> i32 {
-        let mv = self.poke.fast_move;
-        let power = mv.tb_power as f64;
-        let attack = self.poke.attack * get_rank_mul(self.buff.0);
-        let defense = opponent.poke.defense * get_rank_mul(opponent.buff.1);
+    pub fn do_fast_move(&mut self, opponent: &mut Self) -> i32 {
+        let mv = self.fast_move();
+        let power = mv.real_power(&self.types());  // 威力(タイプ一致を含む)
+        let attack = self.stats().attack * rank_mul(self.buff.0);
+        let defense = opponent.stats().defense * rank_mul(opponent.buff.1);
 
         // ダメージ補正 = タイプ相性 × タイプ一致ボーナス(STAB) × トレーナーバトル
         let type_effect = if self.is_disable_type_effect {  // タイプ相性
             1.0
         } else {
-            mv.mtype.get_type_effect_bonus(&opponent.poke.poke.get_types())
+            mv.mtype().type_effect_bonus(&opponent.types())
         };
 
-        let stab = if self.poke.is_stab_fast_move { STAB } else { 1.0 };
-        let damage_m = type_effect * stab * TRAINER_BATTLE_BONUS;
+        let damage_m = type_effect * TRAINER_BATTLE_BONUS;
 
         let damage = (0.5 * power * (attack / defense) * damage_m).floor() as i32 + 1;
 
-        debug_print!("Debug: {} [fast_move {}] 威力 = {}, こうげき = {:.1}, ぼうぎょ = {:.1}",
-                     self.poke.poke.name, mv.name, power, attack, defense);
-        debug_println!(", タイプ相性 = {}, STAB = {}, ダメージ = {}", type_effect, stab, damage);
+        debug_print!("Debug: {} [fast_move {}] 威力 = {:.1}, こうげき = {:.1}, ぼうぎょ = {:.1}",
+                     self.name(), mv.name(), power, attack, defense);
+        debug_println!(", タイプ相性 = {}, ダメージ = {}", type_effect, damage);
 
         opponent.hp = std::cmp::max(opponent.hp - damage, 0);
-        self.energy = std::cmp::min(self.energy + mv.tb_energy, 100);
+        self.energy = std::cmp::min(self.energy + mv.energy(), 100);
 
         damage
     }
 
     /// スペシャルアタックを実行する
     /// ダメージを返す
-    pub fn charge_move(&mut self, i: usize, opponent: &mut Self, mut cm_bonus: f64, shield: bool) -> i32 {
-        let mv = if let Some(mv) = self.get_charge_move(i) {
+    pub fn do_charge_move(&mut self, i: usize, opponent: &mut Self, mut cm_bonus: f64, shield: bool) -> i32 {
+        let mv = if let Some(mv) = self.charge_move(i) {
             mv
         } else {
             return 0;
         };
 
-        if self.energy < mv.tb_energy {
+        if self.energy < mv.energy() {
             return 0;
         }
 
@@ -768,20 +874,18 @@ impl BattlePokemon {
 
         if shield {
             damage = 1;
-            debug_println!("Debug: {} [charge_move {}] *** シールド ***", self.poke.poke.name, mv.name);
+            debug_println!("Debug: {} [charge_move {}] *** シールド ***", self.name(), mv.name());
         } else {
-            let power = mv.tb_power as f64;  // 威力
-            let attack = self.poke.attack * get_rank_mul(self.buff.0);  // 攻撃ステータス * ステータス変化
-            let defense = opponent.poke.defense * get_rank_mul(opponent.buff.1);  // 防御ステータス * ステータス変化
+            let power = mv.real_power(&self.types());  // 威力(タイプ一致を含む)
+            let attack = self.stats().attack * rank_mul(self.buff.0);  // 攻撃ステータス * ステータス変化
+            let defense = opponent.stats().defense * rank_mul(opponent.buff.1);  // 防御ステータス * ステータス変化
 
             // ダメージ補正 = タイプ相性 * タイプ一致ボーナス(STAB) * トレーナーバトル * スペシャルアタック
             let type_effect = if self.is_disable_type_effect {  // タイプ相性
                 1.0
             } else {
-                mv.mtype.get_type_effect_bonus(&opponent.poke.poke.get_types())
+                mv.mtype().type_effect_bonus(&opponent.types())
             };
-
-            let stab = if self.poke.is_stab_fast_move { STAB } else { 1.0 };
 
             // スペシャルアタックボーナス
             if cm_bonus < 0.0 {
@@ -790,29 +894,29 @@ impl BattlePokemon {
                 cm_bonus = 1.0;
             }
 
-            let damage_m = type_effect * stab * TRAINER_BATTLE_BONUS * cm_bonus;
+            let damage_m = type_effect * TRAINER_BATTLE_BONUS * cm_bonus;
 
             damage = (0.5 * power * (attack / defense) * damage_m).floor() as i32 + 1;
 
-            debug_print!("Debug: {} [charge_move {}] 威力 = {}, こうげき = {:.1}, ぼうぎょ = {:.1}",
-                         self.poke.poke.name, mv.name, power, attack, defense);
-            debug_println!(", タイプ相性 = {}, STAB = {}, ダメージ = {}", type_effect, stab, damage);
+            debug_print!("Debug: {} [charge_move {}] 威力 = {:.1}, こうげき = {:.1}, ぼうぎょ = {:.1}",
+                         self.name(), mv.name(), power, attack, defense);
+            debug_println!(", タイプ相性 = {}, ダメージ = {}", type_effect, damage);
         }
 
         // ステータス変化
-        if let Some(Buff(you_buff_atk, you_buff_def, opponent_buff_atk, opponent_buff_def)) = mv.tb_buff {
+        if let Some(Buff(you_buff_atk, you_buff_def, opponent_buff_atk, opponent_buff_def)) = mv.buff() {
             let mut rng = rand::thread_rng();
             let rand_val = rng.gen::<f32>() * 100.0;
 
-            if rand_val < mv.tb_buff_prob {
+            if rand_val < mv.buff_prob() {
                 self.add_buff(you_buff_atk.into(), you_buff_def.into());
                 opponent.add_buff(opponent_buff_atk.into(), opponent_buff_def.into());
-                debug_println!("Debug: ステータス変化 {:?}", mv.tb_buff);
+                debug_println!("Debug: ステータス変化 {:?}", mv.buff());
             }
         }
 
         opponent.hp = std::cmp::max(opponent.hp - damage, 0);
-        self.energy = std::cmp::max(self.energy - mv.tb_energy, 0);
+        self.energy = std::cmp::max(self.energy - mv.energy(), 0);
 
         damage
     }
@@ -820,16 +924,12 @@ impl BattlePokemon {
 
 #[test]
 fn test_battle_pokemon() {
-    let koko = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, 10, 9, 12).unwrap();
+    let koko = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, (10, 9, 12)).unwrap();
 
     let mut p = BattlePokemon::new(Arc::new(koko));
 
     assert_eq!(p.can_charge_move1(), false);
     assert_eq!(p.can_charge_move2(), false);
-    p.energy = p.poke.charge_move1.tb_energy;
+    p.energy = p.charge_move1().energy();
     assert_eq!(p.can_charge_move1(), true);
-
-    let blak = Pokemon::new("ブラッキー", "バークアウト", "あくのはどう", None, 1498, None, 2, 14, 0).unwrap();
-
-    let mut p2 = BattlePokemon::new(Arc::new(blak));
 }

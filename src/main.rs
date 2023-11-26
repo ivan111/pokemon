@@ -9,8 +9,6 @@ mod battle;
 use std::fs::File;
 use std::io::BufReader;
 
-use dirs;
-
 fn main() {
     let mut file_name = dirs::home_dir().unwrap();
     file_name.push("mypokemon.json");
@@ -27,10 +25,4 @@ fn main() {
     let mut battle = battle::Battle::new("たけし".to_string(), team1, "さとし".to_string(), team2);
 
     battle.start();
-    /*
-    battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
-    battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
-    battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
-    battle.do_action([battle::Action::FastMove, battle::Action::FastMove]);
-    */
 }

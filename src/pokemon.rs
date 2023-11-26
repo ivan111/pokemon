@@ -6,42 +6,132 @@ use std::fmt;
 use serde::Deserialize;
 
 use crate::pokepedia::*;
+use crate::types::Type;
 use crate::moves::*;
-use crate::cpm::*;
+use crate::cpm::cpm;
 use crate::index::*;
 
 #[derive(Debug, Clone)]
 pub struct Pokemon {
-    pub poke: &'static Pokepedia,
+    dict: &'static Pokepedia,
 
-    pub lv: f32,
-
-    // 指標
-    pub cp: i32,
-    pub scp: i32,
-    pub dcp: i32,
+    lv: f32,  // ポケモンレベル
 
     // 個体値
-    pub attack_iv: i32,
-    pub defense_iv: i32,
-    pub stamina_iv: i32,
-
-    // ステータス
-    pub cpm: f64,
-    pub attack: f64,  // (種族値(攻撃) + attack_iv) * CP補正値
-    pub defense: f64,  // (種族値(防御) + defense_iv) * CP補正値
-    pub stamina: f64,  // (種族値(耐久) + stamina_iv) * CP補正値
-    pub hp: i32,  // floor((種族値(耐久) + stamina_iv) * CP補正値)
+    ivs: IVs,
 
     // 技
-    pub fast_move: &'static FastMove,
-    pub is_stab_fast_move: bool,  // STAB(Same Type Attack Bonus, タイプ一致ボーナス)
+    fast_move: &'static FastMove,
+    charge_move1: &'static ChargeMove,
+    charge_move2: Option<&'static ChargeMove>,
+}
 
-    pub charge_move1: &'static ChargeMove,
-    pub is_stab_charge_move1: bool,
+/// ステータス
+#[derive(Debug, Clone, Copy)]
+pub struct Stats {
+    pub attack: f64,
+    pub defense: f64,
+    pub stamina: f64,
+}
 
-    pub charge_move2: Option<&'static ChargeMove>,
-    pub is_stab_charge_move2: bool,
+impl Stats {
+    pub const fn new(attack: f64, defense: f64, stamina: f64) -> Self {
+        Self { attack, defense, stamina }
+    }
+
+    /// selfの種族値からステータスを計算する
+    pub fn stats(&self, lv: f32, ivs: IVs) -> Self {
+        let cpm = cpm(lv);
+        let attack = (self.attack + ivs.attack as f64) * cpm;
+        let defense = (self.defense + ivs.defense as f64) * cpm;
+        let stamina = (self.stamina + ivs.stamina as f64) * cpm;
+
+        Self { attack, defense, stamina }
+    }
+
+    /// CP(Combat Power, 戦闘力)を計算する
+    pub fn calc_cp(&self) -> i32 {
+        let cp = (self.attack * (self.defense * self.stamina).sqrt() / 10.0) as i32;
+
+        if cp < 10 {
+            10
+        } else {
+            cp
+        }
+    }
+
+    /// SCP(Standard Combat Power, 標準戦闘力)を計算して返す。
+    /// SCPは独自の指標でゲームでは表示されることはない。
+    /// SCPは攻撃力・防御力・耐久性をバランスよく表した指標。
+    /// トレーナーバトルなど1対1の対戦で参考となる。
+    pub fn calc_scp(&self) -> i32 {
+        let v = self.attack * self.defense * self.stamina.floor();
+        let scp = (v.powf(2.0/3.0) / 10.0) as i32;
+
+        if scp < 10 {
+            10
+        } else {
+            scp
+        }
+    }
+
+    /// DCP(Defensive Combat Power, 防御的戦闘力)を計算して返す。
+    /// DCPは独自の指標でゲームでは表示されることはない。
+    /// DCPは防御力と耐久性を重視した指標となる。
+    pub fn calc_dcp(&self) -> i32 {
+        let v = self.attack * self.defense * self.defense * self.stamina * self.stamina;
+        let dcp = (v.powf(2.0/5.0) / 10.0) as i32;
+
+        if dcp < 10 {
+            10
+        } else {
+            dcp
+        }
+    }
+}
+
+#[test]
+fn test_calc_index() {
+    let kure = Pokemon::new("クレセリア", "ねんりき", "みらいよち", None, 0, Some(20.0), (2, 15, 13)).unwrap();
+
+    assert_eq!(kure.cp(), 1500);
+    assert_eq!(kure.scp(), 1815);
+    assert_eq!(kure.dcp(), 2115);
+
+    let fude = Pokemon::new("フーディン", "ねんりき", "みらいよち", None, 0, Some(18.0), (1, 15, 15)).unwrap();
+
+    assert_eq!(fude.cp(), 1495);
+    assert_eq!(fude.scp(), 1279);
+    assert_eq!(fude.dcp(), 1132);
+}
+
+/// 個体値(Individual Values)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IVs {
+    pub attack: i32,
+    pub defense: i32,
+    pub stamina: i32,
+}
+
+impl IVs {
+    pub fn new(attack: i32, defense: i32, stamina: i32) -> Result<Self, PokemonError> {
+        if !(0..16).contains(&attack)  {
+            let message = format!("[IVs::new] 攻撃の個体値(attack_iv)が範囲外(0～15が正常): {}", attack);
+            return Err(PokemonError { message });
+        }
+
+        if !(0..16).contains(&defense)  {
+            let message = format!("[IVs::new] 防御の個体値(defense_iv)が範囲外(0～15が正常): {}", defense);
+            return Err(PokemonError { message });
+        }
+
+        if !(0..16).contains(&stamina)  {
+            let message = format!("[IVs::new] 耐久の個体値(stamina_iv)が範囲外(0～15が正常): {}", stamina);
+            return Err(PokemonError { message });
+        }
+
+        Ok(Self { attack, defense, stamina })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -60,105 +150,80 @@ impl std::error::Error for PokemonError { }
 impl Pokemon {
     /// cpがマイナスのときは-cpを超えない、CPとポケモンレベルの最大値を自動で計算する
     pub fn new(name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
-           mut cp: i32, pokemon_lv: Option<f32>, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Result<Self, PokemonError> {
-        let poke = match get_pokepedia_by_name(name) {
+           mut cp: i32, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32)) -> Result<Self, PokemonError> {
+        let dict = match pokepedia_by_name(name) {
             None => {
                 let message = format!("存在しないポケモン: {}", name);
                 return Err(PokemonError { message });
             },
-            Some(poke) => poke,
+            Some(dict) => dict,
         };
 
-        if !(0..16).contains(&attack_iv)  {
-            let message = format!("{}: 攻撃の個体値(attack_iv)が範囲外(0～15が正常): {}", poke.name, attack_iv);
-            return Err(PokemonError { message });
-        }
-
-        if !(0..16).contains(&defense_iv)  {
-            let message = format!("{}: 防御の個体値(defense_iv)が範囲外(0～15が正常): {}", poke.name, defense_iv);
-            return Err(PokemonError { message });
-        }
-
-        if !(0..16).contains(&stamina_iv)  {
-            let message = format!("{}: 耐久の個体値(stamina_iv)が範囲外(0～15が正常): {}", poke.name, stamina_iv);
-            return Err(PokemonError { message });
-        }
+        let ivs = IVs::new(ivs_tuple.0, ivs_tuple.1, ivs_tuple.2)?;
 
         let lv;
 
         if let Some(pl) = pokemon_lv {  // pokemon_lv引数があればそれをポケモンレベルとする。
             let int_pl = (pl * 2.0).floor() as usize;
             if !(2..=100).contains(&int_pl) {
-                let message = format!("{}: pokemon_lvが1.0から50.0の間でない。: {}", poke.name, pl);
+                let message = format!("{}: pokemon_lvが1.0から50.0の間でない。: {}", dict.name(), pl);
                 return Err(PokemonError { message });
             }
 
             lv = pl;
-            cp = calc_cp(poke, lv, attack_iv, defense_iv, stamina_iv);
-        } else {
-            if cp < 0 {
-                cp = -cp;
+        } else if cp < 0 {
+            cp = -cp;
 
-                lv = match calc_pl_limited_by_cp(cp, 50.0, poke, attack_iv, defense_iv, stamina_iv) {
-                    Some(lv) => lv,
-                    None => {
-                        let message = format!("{}: CP {} 以下は存在しない。", poke.name, cp);
-                        return Err(PokemonError { message });
-                    }
+            lv = match calc_lv_limited_by_cp(cp, 50.0, dict, ivs) {
+                Some(lv) => lv,
+                None => {
+                    let message = format!("{}: CP {} 以下は存在しない。", dict.name(), cp);
+                    return Err(PokemonError { message });
                 }
-            } else {
-                lv = match calc_pokemon_lv(poke, cp, attack_iv, defense_iv, stamina_iv) {
-                    None => {
-                        let mut msgs = vec![];
-                        msgs.push(format!("{}: ポケモンレベルの取得に失敗(CPか個体値が間違っている)", poke.name));
-
-                        let near_ivs = search_near_iv(poke, cp, attack_iv, defense_iv, stamina_iv);
-                        if !near_ivs.is_empty() {
-                            msgs.push(format!("もしかして、この値?"));
-
-                            for (a, d, s) in near_ivs {
-                                msgs.push(format!("attack_iv = {}, defense_iv = {}, stamina_iv = {}", a, d, s));
-                            }
-                        }
-
-                        return Err(PokemonError { message: msgs.join("\n") });
-                    },
-                    Some(lv) => lv,
-                };
             }
+        } else {
+            lv = match calc_lv(dict, cp, ivs) {
+                None => {
+                    let mut msgs = vec![];
+                    msgs.push(format!("{}: ポケモンレベルの取得に失敗(CPか個体値が間違っている)", dict.name()));
+
+                    let near_ivs = search_near_iv(dict, cp, ivs);
+                    if !near_ivs.is_empty() {
+                        msgs.push("もしかして、この値?".to_string());
+
+                        for ivs in near_ivs {
+                            msgs.push(format!("{:?}", ivs));
+                        }
+                    }
+
+                    return Err(PokemonError { message: msgs.join("\n") });
+                },
+                Some(lv) => lv,
+            };
         }
 
-        let scp = calc_scp(poke, lv, attack_iv, defense_iv, stamina_iv);
-        let dcp = calc_dcp(poke, lv, attack_iv, defense_iv, stamina_iv);
-
-        let types = poke.get_types();
-
-        let fast_move = match get_fast_move_by_name(fast_move) {
+        let fast_move = match fast_move_by_name(fast_move) {
             None => {
-                let message = format!("{}: 存在しないノーマルアタック(fast_move): {}", poke.name, fast_move);
+                let message = format!("{}: 存在しないノーマルアタック(fast_move): {}", dict.name(), fast_move);
                 return Err(PokemonError { message });
             },
             Some(mv) => mv,
         };
 
-        let is_stab_fast_move = types.iter().any(|t| t == &fast_move.mtype);
-
-        let charge_move1 = match get_charge_move_by_name(charge_move1) {
+        let charge_move1 = match charge_move_by_name(charge_move1) {
             None => {
-                let message = format!("{}: 存在しないスペシャルアタック(charge_move1): {}", poke.name, charge_move1);
+                let message = format!("{}: 存在しないスペシャルアタック(charge_move1): {}", dict.name(), charge_move1);
                 return Err(PokemonError { message });
             },
             Some(mv) => mv,
         };
-
-        let is_stab_charge_move1 = types.iter().any(|t| t == &charge_move1.mtype);
 
         let charge_move2 = match charge_move2 {
             None => None,
             Some(mv_str) => {
-                match get_charge_move_by_name(&mv_str) {
+                match charge_move_by_name(&mv_str) {
                     None => {
-                        let message = format!("{}: 存在しないスペシャルアタック(charge_move2): {}", poke.name, mv_str);
+                        let message = format!("{}: 存在しないスペシャルアタック(charge_move2): {}", dict.name(), mv_str);
                         return Err(PokemonError { message });
                     },
                     Some(mv) => Some(mv),
@@ -166,56 +231,136 @@ impl Pokemon {
             }
         };
 
-        let is_stab_charge_move2 = if let Some(mv) = charge_move2 {
-            types.iter().any(|t| t == &mv.mtype)
-        } else {
-            false
-        };
-
-        let cpm = get_cpm(lv);
-        let attack = (poke.attack_st + attack_iv) as f64 * cpm;
-        let defense = (poke.defense_st + defense_iv) as f64 * cpm;
-        let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
-        let hp = stamina as i32;
-
-        Ok(Pokemon { poke, lv, cp, scp, dcp, attack_iv, defense_iv, stamina_iv, cpm, attack, defense, stamina, hp, fast_move,
-            is_stab_fast_move, charge_move1, is_stab_charge_move1, charge_move2, is_stab_charge_move2 })
+        Ok(Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 })
     }
 
     pub fn new_limited_by_cp(limit_cp: i32, name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
-                             attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Result<Self, PokemonError> {
-        Pokemon::new(name, fast_move, charge_move1, charge_move2, -limit_cp, None, attack_iv, defense_iv, stamina_iv)
+                             ivs_tuple: (i32, i32, i32)) -> Result<Self, PokemonError> {
+        Pokemon::new(name, fast_move, charge_move1, charge_move2, -limit_cp, None, ivs_tuple)
+    }
+
+    pub fn dict(&self) -> &'static Pokepedia {
+        self.dict
+    }
+
+    pub fn name(&self) -> &'static str {
+        self.dict.name()
+    }
+
+    pub fn types(&self) -> Vec<Type> {
+        self.dict.types()
+    }
+
+    pub fn base_stats(&self) -> Stats {
+        self.dict.base_stats()
+    }
+
+    pub fn lv(&self) -> f32 {
+        self.lv
+    }
+
+    pub fn lv_mut(&mut self) -> &mut f32 {
+        &mut self.lv
+    }
+
+    pub fn ivs(&self) -> IVs {
+        self.ivs
+    }
+
+    pub fn ivs_mut(&mut self) -> &mut IVs {
+        &mut self.ivs
+    }
+
+    pub fn fast_move(&self) -> &'static FastMove {
+        self.fast_move
+    }
+
+    pub fn charge_move1(&self) -> &'static ChargeMove {
+        self.charge_move1
+    }
+
+    pub fn charge_move2(&self) -> Option<&'static ChargeMove> {
+        self.charge_move2
+    }
+
+    pub fn cp(&self) -> i32 {
+        self.stats().calc_cp()
+    }
+
+    pub fn scp(&self) -> i32 {
+        self.stats().calc_scp()
+    }
+
+    pub fn dcp(&self) -> i32 {
+        self.stats().calc_dcp()
+    }
+
+    pub fn cpm(&self) -> f64 {
+        cpm(self.lv)
+    }
+
+    pub fn stats(&self) -> Stats {
+        self.dict.base_stats().stats(self.lv, self.ivs)
+    }
+
+    pub fn hp(&self) -> i32 {
+        self.stats().stamina.floor() as i32
     }
 }
 
-#[derive(Debug, Deserialize)]
-pub struct PokemonJson {
-    pub name: String,
-    pub cp: i32,
+/// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
+pub fn calc_lv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Option<f32> {
+    for i in 2..=100 {
+        let lv = i as f32 / 2.0;
 
-    // 個体値(0～15)
-    pub attack_iv: i32,
-    pub defense_iv: i32,
-    pub stamina_iv: i32,
+        let stats = poke.base_stats().stats(lv, ivs);
 
-    // 技
-    pub fast_move: String,
-    pub charge_move1: String,
-    pub charge_move2: Option<String>,
+        if cp == stats.calc_cp() {
+            return Some(lv);
+        }
+    }
+
+    None
 }
 
-fn search_near_iv(poke: &Pokepedia, cp: i32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Vec<(i32, i32, i32)> {
+#[test]
+fn test_calc_lv() {
+    let saza = pokepedia_by_name("サザンドラ").unwrap();
+    let ivs = IVs::new(10, 14, 14).unwrap();
+    assert_eq!(calc_lv(saza, 2276, ivs), Some(22.5));
+    assert_eq!(calc_lv(saza, 2277, ivs), None);
+}
+
+#[derive(Debug, Deserialize)]
+struct PokemonJson {
+    name: String,
+    cp: i32,
+
+    // 個体値(0～15)
+    attack_iv: i32,
+    defense_iv: i32,
+    stamina_iv: i32,
+
+    // 技
+    fast_move: String,
+    charge_move1: String,
+    charge_move2: Option<String>,
+}
+
+fn search_near_iv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Vec<IVs> {
     let mut near_ivs = vec![];
 
-    let near_attack_iv = vec![attack_iv-1, attack_iv, attack_iv+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
-    let near_defense_iv = vec![defense_iv-1, defense_iv, defense_iv+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
-    let near_stamina_iv = vec![stamina_iv-1, stamina_iv, stamina_iv+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
+    let near_attack_iv = vec![ivs.attack-1, ivs.attack, ivs.attack+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
+    let near_defense_iv = vec![ivs.defense-1, ivs.defense, ivs.defense+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
+    let near_stamina_iv = vec![ivs.stamina-1, ivs.stamina, ivs.stamina+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();
 
     for a in &near_attack_iv {
         for d in &near_defense_iv {
             for s in &near_stamina_iv {
-                if calc_pokemon_lv(poke, cp, *a, *d, *s).is_some() {
-                    near_ivs.push((*a, *d, *s));
+                let v = IVs::new(*a, *d, *s).unwrap();
+
+                if calc_lv(poke, cp, v).is_some() {
+                    near_ivs.push(v);
                 }
             }
         }
@@ -230,8 +375,8 @@ pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>, std::io::Er
     let data: Vec<PokemonJson> = serde_json::from_reader(reader)?;
 
     for d in data {
-        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2,
-                                d.cp, None, d.attack_iv, d.defense_iv, d.stamina_iv);
+        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2, d.cp, None,
+                                (d.attack_iv, d.defense_iv, d.stamina_iv));
 
         match poke {
             Ok(poke) => pokemons.push(poke),
@@ -291,18 +436,24 @@ fn test_load_pokemon() {
 
     let p = &pokemons[0];
 
-    assert_eq!(p.poke.name, "ココロモリ");
-    assert_eq!(p.cp, 1489);
-    assert_eq!(p.lv, 34.5);
-    assert_eq!(p.attack_iv, 10);
-    assert_eq!(p.defense_iv, 9);
-    assert_eq!(p.stamina_iv, 12);
-    assert_eq!(p.cpm, 0.7586303702);
-    assert_eq!(p.attack, 129.7257933042);
-    assert_eq!(p.defense, 97.1046873856);
-    assert_eq!(p.stamina, 135.7948362658);
-    assert_eq!(p.hp, 135);
-    assert_eq!(p.fast_move.name, "エアスラッシュ");
-    assert_eq!(p.charge_move1.name, "サイコファング");
-    assert_eq!(p.charge_move2.is_none(), true);
+    assert_eq!(p.name(), "ココロモリ");
+    assert_eq!(p.cp(), 1489);
+    assert_eq!(p.lv(), 34.5);
+
+    let ivs = p.ivs();
+    assert_eq!(ivs.attack, 10);
+    assert_eq!(ivs.defense, 9);
+    assert_eq!(ivs.stamina, 12);
+
+    assert_eq!(p.cpm(), 0.7586303702);
+
+    let stats = p.stats();
+    assert_eq!(stats.attack, 129.7257933042);
+    assert_eq!(stats.defense, 97.1046873856);
+    assert_eq!(stats.stamina, 135.7948362658);
+
+    assert_eq!(p.hp(), 135);
+    assert_eq!(p.fast_move().name(), "エアスラッシュ");
+    assert_eq!(p.charge_move1().name(), "サイコファング");
+    assert_eq!(p.charge_move2().is_none(), true);
 }

@@ -1,11 +1,12 @@
 //! CP補正値
 
-use super::pokepedia::*;
+use crate::pokepedia::Pokepedia;
+use crate::pokemon::IVs;
 
 const NUM_CPM: usize = 101;
 
 /// 引数で指定したポケモンレベルからCP補正値を取得する。
-pub fn get_cpm(lv: f32) -> f64 {
+pub fn cpm(lv: f32) -> f64 {
     assert!((0.0..=51.0).contains(&lv));
 
     let i = ((lv - 1.0) * 2.0) as usize;
@@ -13,43 +14,10 @@ pub fn get_cpm(lv: f32) -> f64 {
 }
 
 #[test]
-fn test_get_cpm() {
-    assert_eq!(get_cpm(1.0), 0.0939999967);
-    assert_eq!(get_cpm(11.5), 0.4530599481);
-    assert_eq!(get_cpm(51.0), 0.84529999);
-}
-
-/// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
-pub fn calc_pokemon_lv(poke: &Pokepedia, cp: i32, attack_iv: i32, defense_iv: i32, stamina_iv: i32) -> Option<f32> {
-    assert!((0..=15).contains(&attack_iv));
-    assert!((0..=15).contains(&defense_iv));
-    assert!((0..=15).contains(&stamina_iv));
-
-    for (i, cpm) in (0..NUM_CPM).zip(CPM) {
-        let attack = (poke.attack_st + attack_iv) as f64 * cpm;
-        let defense = (poke.defense_st + defense_iv) as f64 * cpm;
-        let stamina = (poke.stamina_st + stamina_iv) as f64 * cpm;
-
-        let mut ccp = (attack * defense.sqrt() * stamina.sqrt() / 10.0) as i32;
-
-        if ccp < 10 {
-            ccp = 10;
-        }
-
-        if cp == ccp {
-            let pl = (i + 2) as f32 / 2.0;
-            return Some(pl);
-        }
-    }
-
-    None
-}
-
-#[test]
-fn test_calc_pokemon_lv() {
-    let saza = get_pokepedia_by_name("サザンドラ").unwrap();
-    assert_eq!(calc_pokemon_lv(saza, 2276, 10, 14, 14), Some(22.5));
-    assert_eq!(calc_pokemon_lv(saza, 2277, 10, 14, 14), None);
+fn test_cpm() {
+    assert_eq!(cpm(1.0), 0.0939999967);
+    assert_eq!(cpm(11.5), 0.4530599481);
+    assert_eq!(cpm(51.0), 0.84529999);
 }
 
 /// CP補正値

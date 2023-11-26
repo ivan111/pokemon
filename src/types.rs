@@ -47,9 +47,9 @@ impl From<&str> for Type {
     }
 }
 
-impl Into<String> for Type {
-    fn into(self) -> String {
-        let s = match self {
+impl From<Type> for String {
+    fn from(val: Type) -> Self {
+        let s = match val {
             Type::Normal => "ノーマル",
             Type::Flare => "ほのお",
             Type::Water => "みず",
@@ -114,7 +114,7 @@ impl Type {
         println!();
 
         if let Some(t2) = type2 {
-            let name: String = t2.into();
+            let name: String = String::from(t2);
             println!("複合タイプ: {}", name);
             println!();
         };
@@ -159,7 +159,7 @@ impl Type {
         println!();
     }
 
-    pub fn get_type_effect_bonus(&self, types: &Vec<Self>) -> f64 {
+    pub fn type_effect_bonus(&self, types: &[Self]) -> f64 {
         let i = types.iter().map(|t| TYPE_EFFECT_MATRIX[*self as usize][*t as usize]).sum::<i8>();
 
         assert!((-3..=2).contains(&i));
@@ -169,7 +169,7 @@ impl Type {
 }
 
 #[test]
-fn test_get_type_effect_bonus() {
+fn test_type_effect_bonus() {
     let mut effects = vec![];
     for v in TYPE_EFFECT_ARR {
         effects.push(v);
@@ -182,7 +182,7 @@ fn test_get_type_effect_bonus() {
                     continue;
                 }
 
-                let v = t.get_type_effect_bonus(&vec![t1, t2]);
+                let v = t.type_effect_bonus(&vec![t1, t2]);
                 assert!(effects.contains(&v));
             }
         }
