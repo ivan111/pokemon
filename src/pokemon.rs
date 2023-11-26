@@ -5,11 +5,11 @@ use std::fmt;
 
 use serde::Deserialize;
 
-use crate::pokepedia::*;
+use crate::pokepedia::{Pokepedia, pokepedia_by_name};
 use crate::types::Type;
-use crate::moves::*;
+use crate::moves::{FastMove, ChargeMove, fast_move_by_name, charge_move_by_name};
 use crate::cpm::cpm;
-use crate::index::*;
+use crate::index::calc_lv_limited_by_cp;
 
 #[derive(Debug, Clone)]
 pub struct Pokemon {
@@ -132,6 +132,10 @@ impl IVs {
 
         Ok(Self { attack, defense, stamina })
     }
+
+    pub fn to_tuple(&self) -> (i32, i32, i32) {
+        (self.attack, self.defense, self.stamina)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -171,16 +175,6 @@ impl Pokemon {
             }
 
             lv = pl;
-        } else if cp < 0 {
-            cp = -cp;
-
-            lv = match calc_lv_limited_by_cp(cp, 50.0, dict, ivs) {
-                Some(lv) => lv,
-                None => {
-                    let message = format!("{}: CP {} 以下は存在しない。", dict.name(), cp);
-                    return Err(PokemonError { message });
-                }
-            }
         } else {
             lv = match calc_lv(dict, cp, ivs) {
                 None => {
@@ -232,11 +226,6 @@ impl Pokemon {
         };
 
         Ok(Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 })
-    }
-
-    pub fn new_limited_by_cp(limit_cp: i32, name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
-                             ivs_tuple: (i32, i32, i32)) -> Result<Self, PokemonError> {
-        Pokemon::new(name, fast_move, charge_move1, charge_move2, -limit_cp, None, ivs_tuple)
     }
 
     pub fn dict(&self) -> &'static Pokepedia {
@@ -335,6 +324,7 @@ fn test_calc_lv() {
 struct PokemonJson {
     name: String,
     cp: i32,
+    hp: Option<i32>,
 
     // 個体値(0～15)
     attack_iv: i32,
@@ -379,7 +369,16 @@ pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>, std::io::Er
                                 (d.attack_iv, d.defense_iv, d.stamina_iv));
 
         match poke {
-            Ok(poke) => pokemons.push(poke),
+            Ok(poke) => {
+                if let Some(hp) = d.hp {
+                    if hp != poke.hp() {
+                        eprintln!("{} HPが一致しない, データ: {}, 計算結果: {}", poke.name(), hp, poke.hp());
+                        continue;
+                    }
+                }
+
+                pokemons.push(poke)
+            },
             Err(err) => println!("{}", err),
         }
     }

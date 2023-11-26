@@ -9,7 +9,7 @@ use rand::prelude::*;
 use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, Stats, IVs};
 use crate::types::Type;
-use crate::moves::*;
+use crate::moves::{FastMove, ChargeMove, Buff};
 
 macro_rules! debug_print {
     ($($arg:tt)*) => (if ::std::cfg!(debug_assertions) { ::std::print!($($arg)*); })
@@ -53,8 +53,6 @@ pub struct Battle {
     pub switch1: fn(&Player) -> usize,
 }
 
-// TODO: 制限時間4分30秒
-
 #[derive(Clone)]
 pub struct State {
     pub player0: Player,
@@ -63,7 +61,6 @@ pub struct State {
 
     pub turn: i32,  // 現在のターン数。実際に行動した単位。
     pub elapsed_ms: i32,  // 経過時間(ミリ秒)
-    pub logs: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -87,6 +84,19 @@ pub struct BattlePokemon {
     pub energy: i32,  // 充填されたエネルギー。0から100の値をとる。
     pub buff: (i32, i32),  // ランク補正。(攻撃ランク, 防御ランク)。ランクは-4から4の範囲をとる。
     pub is_disable_type_effect: bool,  // タイプ相性を無効にする。PPT(Power Per Turn)の計算に使用
+}
+
+#[derive(Clone)]
+pub struct Log {
+    pub turn: i32,
+
+    pub hp0: i32,
+    pub energy0: i32,
+    pub event0: String,
+
+    pub hp1: i32,
+    pub energy1: i32,
+    pub event1: String,
 }
 
 fn strategy(player: &Player) -> Action {
@@ -116,9 +126,8 @@ impl Battle {
             player0,
             player1,
             phase: Phase::Neutral,
-            turn: 1,
+            turn: 0,
             elapsed_ms: 0,
-            logs: vec![],
         };
 
         Battle {
@@ -138,19 +147,6 @@ impl Battle {
     pub fn state(&self) -> &State {
         self.states.last().unwrap()
     }
-
-    pub fn is_ended(&self) -> bool {
-        let state = self.state();
-
-        state.player0.is_ended() || state.player1.is_ended()
-    }
-
-    /*
-    pub fn print_timeline(&self) {
-        for state in &self.states {
-        }
-    }
-    */
 
     pub fn start(&mut self) {
         let mut act0;

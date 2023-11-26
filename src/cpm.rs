@@ -1,8 +1,5 @@
 //! CP補正値
 
-use crate::pokepedia::Pokepedia;
-use crate::pokemon::IVs;
-
 const NUM_CPM: usize = 101;
 
 /// 引数で指定したポケモンレベルからCP補正値を取得する。
