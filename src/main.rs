@@ -8,6 +8,7 @@ mod battle;
 mod ranking;
 mod utils;
 
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, Write, BufReader};
 
@@ -15,26 +16,43 @@ use rustyline::error::ReadlineError;
 use rustyline::{DefaultEditor, Result};
 
 use crate::pokepedia::Pokepedia;
-use crate::pokemon::{IVs, calc_lv, search_near_iv};
+use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
 
+fn load_pokemons() -> HashMap<String, Vec<Pokemon>> {
+    let mut poke_path = dirs::home_dir().unwrap();
+    poke_path.push("pokemons");
+
+    let mut pdir = HashMap::new();
+
+    for entry in poke_path.read_dir().expect("pokemonsディレクトリの読み込みに失敗") {
+        let entry = entry.expect("pokemonsディレクトリの読み込みに失敗");
+
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+
+        let pokemons = {
+            let f = File::open(&poke_path.join(file_name.clone())).unwrap();
+            let mut reader = BufReader::new(f);
+            pokemon::load_pokemon(&mut reader).unwrap()
+        };
+
+        pdir.insert(file_name, pokemons);
+    }
+
+    pdir
+}
+
 fn main() -> Result<()> {
-    let mut file_name = dirs::home_dir().unwrap();
-    file_name.push("poke_data.toml");
-    println!("load {:?}", file_name);
+    let mut cd = "main".to_string();  // カレントディレクトリ
 
-    let mut pokemons = {
-        let f = File::open(file_name).unwrap();
-        let mut reader = BufReader::new(f);
-        pokemon::load_pokemon(&mut reader).unwrap()
-    };
-
-    pokemons.sort_by_key(|p| std::cmp::Reverse(p.scp()));
+    let mut pdir = load_pokemons();
 
     let mut rl = DefaultEditor::new()?;
 
     'repl: loop {
-        let readline = rl.readline(">> ");
+        let prompt = format!("{} > ", cd);
+        let readline = rl.readline(&prompt);
+
         match readline {
             Ok(src_line) => {
                 let line = src_line.trim();
@@ -48,8 +66,42 @@ fn main() -> Result<()> {
                     },
 
                     "ls" => {
-                        for p in &pokemons {
-                            p.print();
+                        if words.len() == 2 {
+                            let name = String::from(words[1]);
+
+                            if name == "/" {
+                                for s in pdir.keys() {
+                                    println!("{}", s);
+                                }
+                            } else if pdir.contains_key(&name) {
+                                for p in pdir.get(&name).unwrap() {
+                                    p.print();
+                                }
+                            } else {
+                                eprintln!("存在しないディレクトリ: {}", name);
+                            }
+                        } else {
+                            for p in pdir.get(&cd).unwrap() {
+                                p.print();
+                            }
+                        }
+                    },
+
+                    "cd" => {
+                        match words.len() {
+                            1 => { cd = "main".to_string(); },
+                            2 => {
+                                let name = String::from(words[1]);
+
+                                if pdir.contains_key(&name) {
+                                    cd = name;
+                                } else {
+                                    eprintln!("存在しないディレクトリ: {}", name);
+                                }
+                            },
+                            _ => {
+                                eprintln!("引数が多すぎる");
+                            }
                         }
                     },
 
