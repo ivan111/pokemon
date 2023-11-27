@@ -240,6 +240,10 @@ impl ChargeMove {
             self.power as f64
         }
     }
+
+    pub fn pte(&self) -> f64 {
+        self.power as f64 / self.energy as f64
+    }
 }
 
 /// 技Noからノーマル技を取得するマップを返す。

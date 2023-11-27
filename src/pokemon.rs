@@ -320,7 +320,72 @@ impl Pokemon {
         println!("{} CP {} SCP {} Lv {} HP {} Atk {:.1} Def {:.1}",
                  self.name(), self.cp(), self.scp(), self.lv, self.hp(), stats.attack, stats.defense);
     }
+
+    /// 1ターンあたりの平均的なわざの威力を計算する
+    fn calc_power_per_turn(&self) -> f64 {
+        let mut num_turns = 0;
+        let mut sum_power = 0.0;
+        let mut energy = 0;
+
+        let types = self.types();
+
+        let charge_move;
+
+        if let Some(mv) = self.charge_move2() {
+            let pte1 = self.charge_move1().pte();
+            let pte2 = mv.pte();
+
+            if pte1 > pte2 {
+                charge_move = self.charge_move1();
+            } else {
+                charge_move = mv;
+            }
+        } else {
+            charge_move = self.charge_move1();
+        }
+
+        while num_turns < MAX_ACP_TURNS {
+            if energy >= charge_move.energy() {
+                energy = std::cmp::max(0, energy - charge_move.energy());
+                sum_power += charge_move.real_power(&types);
+                num_turns += 1;
+            } else {
+                let fast_move = self.fast_move();
+                energy = std::cmp::min(energy + fast_move.energy(), 100);
+                sum_power += fast_move.real_power(&types);
+                num_turns += fast_move.turns();
+            }
+        }
+
+        sum_power / num_turns as f64
+    }
+
+    /// ACP(Advanced Combat Power, 発展型戦闘力)を計算して返す。
+    /// ACPは自分が指標でゲームでは表示されることはない。
+    /// ACPは攻撃力・防御力・耐久性に加えて、技の威力も考慮に入れる。
+    pub fn calc_acp(&self) -> i32 {
+        let ppt = self.calc_power_per_turn();
+        println!("ppt = {:.2}", ppt);
+
+        (self.scp() as f64 * ppt / 10.0).floor() as i32
+    }
 }
+
+const MAX_ACP_TURNS: i32 = 128;
+
+/*
+#[test]
+fn test_calc_acp() {
+    let kure = pokepedia_by_name("クレセリア").unwrap();
+    let ivs = IVs::new(2, 15, 13).unwrap();
+    assert_eq!(calc_acp(kure, 20.0, ivs, "ねんりき", "みらいよち", None), 1982);
+
+    let fude = pokepedia_by_name("フーディン").unwrap();
+    let ivs = IVs::new(1, 15, 15).unwrap();
+    assert_eq!(calc_acp(fude, 18.0, ivs, "ねんりき", "みらいよち", None), 1399);
+}
+
+*/
 
 /// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
 pub fn calc_lv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Option<f32> {

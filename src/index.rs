@@ -3,64 +3,6 @@
 use crate::pokepedia::*;
 use crate::pokemon::{Pokemon, IVs};
 
-const MAX_ACP_TURNS: i32 = 1000;
-
-/// 1ターンあたりの平均的なわざの威力を計算する
-fn calc_power_per_turn(poke: &Pokemon) -> f64 {
-    let mut num_turns = 0;
-    let mut sum_power = 0.0;
-    let mut energy = 0;
-
-    let types = poke.types();
-
-    while num_turns < MAX_ACP_TURNS {
-        if energy >= poke.charge_move1().energy() {
-            energy = std::cmp::max(0, energy - poke.charge_move1().energy());
-            sum_power += poke.charge_move1().real_power(&types);
-            num_turns += 1;
-        } else {
-            energy = std::cmp::min(energy + poke.fast_move().energy(), 100);
-            sum_power += poke.fast_move().real_power(&types);
-            num_turns += poke.fast_move().turns();
-        }
-    }
-
-    sum_power / num_turns as f64
-}
-
-/// ACP(Advanced Combat Power, 発展型戦闘力)を計算して返す。
-/// ACPは自分が指標でゲームでは表示されることはない。
-/// ACPは攻撃力・防御力・耐久性に加えて、技の威力も考慮に入れる。
-pub fn calc_acp(dict: &Pokepedia, lv: f32, ivs: IVs,
-                fast_move: &str, charge_move1: &str, charge_move2: Option<String>) -> i32 {
-
-    let stats = dict.base_stats().stats(lv, ivs);
-    let scp = stats.calc_scp();
-
-    let p = Pokemon::new(dict.name(), fast_move, charge_move1, charge_move2, 0, Some(lv),
-                         (ivs.attack, ivs.defense, ivs.stamina)).unwrap();
-
-    let ppt = calc_power_per_turn(&p);
-    println!("ppt = {:.2}", ppt);
-
-    (scp as f64 * ppt / 10.0).floor() as i32
-}
-
-/*
-
-#[test]
-fn test_calc_acp() {
-    let kure = pokepedia_by_name("クレセリア").unwrap();
-    let ivs = IVs::new(2, 15, 13).unwrap();
-    assert_eq!(calc_acp(kure, 20.0, ivs, "ねんりき", "みらいよち", None), 1982);
-
-    let fude = pokepedia_by_name("フーディン").unwrap();
-    let ivs = IVs::new(1, 15, 15).unwrap();
-    assert_eq!(calc_acp(fude, 18.0, ivs, "ねんりき", "みらいよち", None), 1399);
-}
-
-*/
-
 /// 引数のlimit_cp以下のCPという条件で、一番高いポケモンレベルを返す。
 /// ポケモンレベル1.0でもlimit_cpを超える場合は、Noneを返す。
 pub fn calc_lv_limited_by_cp(limit_cp: i32, limit_lv: f32, dict: &Pokepedia, ivs: IVs) -> Option<f32> {
