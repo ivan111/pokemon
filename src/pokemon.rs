@@ -1,15 +1,17 @@
 //! ポケモンのデータを保持する。
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::fmt;
 
 use anyhow::Result;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
+use skim::prelude::*;
 
 use crate::pokepedia::{Pokepedia, pokepedia_by_name};
 use crate::types::Type;
 use crate::moves::{FastMove, ChargeMove, fast_move_by_name, charge_move_by_name};
 use crate::cpm::cpm;
+use crate::utils::jp_fixed_width_string;
 
 #[derive(Debug, Clone)]
 pub struct Pokemon {
@@ -92,13 +94,13 @@ impl Stats {
 
 #[test]
 fn test_calc_index() {
-    let kure = Pokemon::new("クレセリア", "ねんりき", "みらいよち", None, 0, Some(20.0), (2, 15, 13)).unwrap();
+    let kure = Pokemon::new("クレセリア", Some(20.0), (2, 15, 13), "ねんりき", "みらいよち", None, 0).unwrap();
 
     assert_eq!(kure.cp(), 1500);
     assert_eq!(kure.scp(), 1815);
     assert_eq!(kure.dcp(), 2115);
 
-    let fude = Pokemon::new("フーディン", "ねんりき", "みらいよち", None, 0, Some(18.0), (1, 15, 15)).unwrap();
+    let fude = Pokemon::new("フーディン", Some(18.0), (1, 15, 15), "ねんりき", "みらいよち", None, 0).unwrap();
 
     assert_eq!(fude.cp(), 1495);
     assert_eq!(fude.scp(), 1279);
@@ -106,7 +108,7 @@ fn test_calc_index() {
 }
 
 /// 個体値(Individual Values)
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct IVs {
     pub attack: i32,
     pub defense: i32,
@@ -155,14 +157,15 @@ impl Pokemon {
     pub fn raw_new(dict: &'static Pokepedia, lv: f32, ivs: IVs,
                 fast_move: &'static FastMove, charge_move1: &'static ChargeMove,
                 charge_move2: Option<&'static ChargeMove>
-                ) -> Result<Self, PokemonError> {
+                ) -> Self {
 
-        Ok(Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 })
+        Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 }
     }
 
     /// cpがマイナスのときは-cpを超えない、CPとポケモンレベルの最大値を自動で計算する
-    pub fn new(name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
-           mut cp: i32, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32)) -> Result<Self, PokemonError> {
+    pub fn new(name: &str, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32),
+               fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
+               cp: i32) -> Result<Self, PokemonError> {
         let dict = match pokepedia_by_name(name) {
             None => {
                 let message = format!("存在しないポケモン: {}", name);
@@ -255,6 +258,10 @@ impl Pokemon {
         self.dict.name()
     }
 
+    pub fn s_name(&self) -> &'static str {
+        self.dict.s_name()
+    }
+
     pub fn types(&self) -> Vec<Type> {
         self.dict.types()
     }
@@ -315,10 +322,12 @@ impl Pokemon {
         self.stats().stamina.floor() as i32
     }
 
-    pub fn print(&self) {
+    pub fn format(&self, width: usize) -> String {
         let stats = self.stats();
-        println!("{} CP {} SCP {} Lv {} HP {} Atk {:.1} Def {:.1}",
-                 self.name(), self.cp(), self.scp(), self.lv, self.hp(), stats.attack, stats.defense);
+        let name = jp_fixed_width_string(self.name(), width);
+        format!("{} CP {:>4} SCP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3})",
+                 name, self.cp(), self.scp(), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
+                 stats.attack, stats.defense, self.hp())
     }
 
     /// 1ターンあたりの平均的なわざの威力を計算する
@@ -410,12 +419,12 @@ fn test_calc_lv() {
     assert_eq!(calc_lv(saza, 2277, ivs), None);
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PokemonsToml {
     pokemons: Vec<PokemonToml>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PokemonToml {
     name: String,
     cp: i32,
@@ -452,7 +461,7 @@ pub fn search_near_iv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Vec<IVs> {
     near_ivs
 }
 
-pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
+pub fn load_pokemons<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
     let mut pokemons = vec![];
 
     let mut contents = String::new();
@@ -462,8 +471,8 @@ pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
     let data: PokemonsToml = toml::from_str(&contents)?;
 
     for d in &data.pokemons {
-        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2.clone(), d.cp, None,
-                                (d.ivs.attack, d.ivs.defense, d.ivs.stamina));
+        let poke = Pokemon::new(&d.name, None, (d.ivs.attack, d.ivs.defense, d.ivs.stamina),
+                                &d.fast_move, &d.charge_move1, d.charge_move2.clone(), d.cp);
 
         match poke {
             Ok(poke) => {
@@ -520,7 +529,7 @@ charge_move1 = "どろばくだん"
     use std::io::Cursor;
 
     let mut reader = Cursor::new(poke_toml);
-    let pokemons = match load_pokemon(&mut reader) {
+    let pokemons = match load_pokemons(&mut reader) {
         Err(err) => panic!("{}", err),
         Ok(v) => v,
     };
@@ -549,4 +558,90 @@ charge_move1 = "どろばくだん"
     assert_eq!(p.fast_move().name(), "エアスラッシュ");
     assert_eq!(p.charge_move1().name(), "サイコファング");
     assert_eq!(p.charge_move2().is_none(), true);
+}
+
+pub fn save_pokemons<W: Write>(writer: &mut W, pokemons: &Vec<Pokemon>) -> Result<()> {
+
+    let mut v = Vec::new();
+
+    for p in pokemons {
+        let name = p.name().to_string();
+        let fast_move = p.fast_move().name().to_string();
+        let charge_move1 = p.charge_move1().name().to_string();
+
+        let charge_move2 = match p.charge_move2 {
+            None => None,
+            Some(mv) => Some(String::from(mv.name())),
+        };
+
+        let ptoml = PokemonToml { name, cp: p.cp(), hp: Some(p.hp()), ivs: p.ivs,
+                      fast_move, charge_move1, charge_move2 };
+
+        v.push(ptoml);
+    }
+
+    let data = PokemonsToml { pokemons: v };
+
+    let contents = toml::to_string(&data)?;
+
+    writer.write_all(&contents.into_bytes())?;
+
+    writer.flush()?;
+
+    Ok(())
+}
+
+struct PokemonItem {
+    display_str: String,
+    output_index: String,
+    search_str: String,
+}
+
+impl PokemonItem {
+    fn new(p: &Pokemon, i: usize, width: usize) -> Self {
+        Self {
+            display_str: p.format(width),
+            output_index: i.to_string(),
+            search_str: (p.name().to_owned() + p.s_name()).to_string(),
+        }
+    }
+}
+
+impl SkimItem for PokemonItem {
+    fn text(&self) -> Cow<str> {
+        Cow::Borrowed(&self.search_str)
+    }
+
+    fn display<'a>(&'a self, _context: DisplayContext<'a>) -> AnsiString<'a> {
+        AnsiString::from(&*self.display_str)
+    }
+
+    fn output(&self) -> Cow<'_, str> {
+        Cow::Borrowed(&self.output_index)
+    }
+}
+
+pub fn skim_pokemons(pokemons: &[Pokemon], width: usize) -> Option<usize> {
+    let options = SkimOptions::default();
+
+    let (tx_item, rx_item): (SkimItemSender, SkimItemReceiver) = unbounded();
+
+    for (i, p) in pokemons.iter().enumerate() {
+        let _ = tx_item.send(Arc::new(PokemonItem::new(p, i, width)));
+    }
+
+    drop(tx_item);
+
+    let selected_items = Skim::run_with(&options, Some(rx_item))
+        .map(|out| out.selected_items)
+        .unwrap_or_default();
+
+    if selected_items.len() == 1 {
+        match selected_items[0].output().parse::<usize>() {
+            Ok(i) => Some(i),
+            Err(err) => None,
+        }
+    } else {
+        None
+    }
 }

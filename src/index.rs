@@ -1,7 +1,7 @@
 //! CP, SCP, DCPなどのバトルでの強さの参考になる指標を計算する
 
 use crate::pokepedia::*;
-use crate::pokemon::{Pokemon, IVs};
+use crate::pokemon::IVs;
 
 /// 引数のlimit_cp以下のCPという条件で、一番高いポケモンレベルを返す。
 /// ポケモンレベル1.0でもlimit_cpを超える場合は、Noneを返す。

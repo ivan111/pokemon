@@ -19,37 +19,14 @@ use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
 
-fn load_pokemons() -> HashMap<String, Vec<Pokemon>> {
-    let mut poke_path = dirs::home_dir().unwrap();
-    poke_path.push("pokemons");
-
-    let mut pdir = HashMap::new();
-
-    for entry in poke_path.read_dir().expect("pokemonsディレクトリの読み込みに失敗") {
-        let entry = entry.expect("pokemonsディレクトリの読み込みに失敗");
-
-        let file_name = entry.file_name().to_string_lossy().into_owned();
-
-        let pokemons = {
-            let f = File::open(&poke_path.join(file_name.clone())).unwrap();
-            let mut reader = BufReader::new(f);
-            pokemon::load_pokemon(&mut reader).unwrap()
-        };
-
-        pdir.insert(file_name, pokemons);
-    }
-
-    pdir
-}
-
 fn main() -> Result<()> {
     let mut cd = "main".to_string();  // カレントディレクトリ
 
-    let mut pdir = load_pokemons();
+    let (mut pdir, mut changed_pdir) = load_pokemons();
 
     let mut rl = DefaultEditor::new()?;
 
-    'repl: loop {
+    loop {
         let prompt = format!("{} > ", cd);
         let readline = rl.readline(&prompt);
 
@@ -58,11 +35,28 @@ fn main() -> Result<()> {
                 let line = src_line.trim();
                 let _ = rl.add_history_entry(line);
                 let words = line.split_whitespace().collect::<Vec<_>>();
+                if words.len() == 0 {
+                    continue;
+                }
                 let cmd = words[0];
 
                 match cmd {
                     "q" | "quit" | "exit" => {
-                        break;
+                        let mut is_changed = false;
+                        for v in changed_pdir.values() {
+                            if *v {
+                                is_changed = true;
+                                break;
+                            }
+                        }
+
+                        if is_changed {
+                            if yes_or_no("変更を保存せず終了しますか？(Yesならyを入力): ") {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
                     },
 
                     "ls" => {
@@ -74,16 +68,12 @@ fn main() -> Result<()> {
                                     println!("{}", s);
                                 }
                             } else if pdir.contains_key(&name) {
-                                for p in pdir.get(&name).unwrap() {
-                                    p.print();
-                                }
+                                ls_print(pdir.get(&name).unwrap());
                             } else {
                                 eprintln!("存在しないディレクトリ: {}", name);
                             }
                         } else {
-                            for p in pdir.get(&cd).unwrap() {
-                                p.print();
-                            }
+                            ls_print(pdir.get(&cd).unwrap());
                         }
                     },
 
@@ -106,62 +96,26 @@ fn main() -> Result<()> {
                     },
 
                     "a" | "add" => {
-                        if let Some(dict) = pokepedia::skim_pokepedia() {
-                            println!("ポケモン: {}", dict.name());
+                        if let Some(poke) = create_pokemon() {
+                            let v = pdir.get_mut(&cd).unwrap();
+                            v.push(poke);
+                            println!("ポケモンを作成しました。");
 
-                            let mut cp = read_cp();
-                            let mut ivs = read_ivs();
-
-                            let fast_move = read_fast_move(dict);
-                            println!("ノーマルアタック: {}", fast_move.name());
-
-                            let charge_move1 = read_charge_move1(dict);
-                            println!("スペシャルアタック1: {}", charge_move1.name());
-
-                            let charge_move2 = read_charge_move2(dict);
-                            if let Some(mv) = charge_move2 {
-                                println!("スペシャルアタック2: {}", mv.name());
-                            }
-
-                            let mut lv;
-
-                            loop {
-                                lv = match calc_lv(dict, cp, ivs) {
-                                    None => {
-                                        let mut msgs = vec![];
-                                        msgs.push(format!("{}: ポケモンレベルの取得に失敗(CPか個体値が間違っている)", dict.name()));
-
-                                        let near_ivs = search_near_iv(dict, cp, ivs);
-                                        if near_ivs.is_empty() {
-                                            eprintln!("CPか個体値の入力が間違っている。");
-
-                                            if !yes_or_no("CPと個体値を入力しなおす？(Yesならyを入力): ") {
-                                                continue 'repl;
-                                            }
-
-                                            cp = read_cp();
-                                            ivs = read_ivs();
-                                            continue;
-                                        } else {
-                                            msgs.push("もしかして、この値?".to_string());
-
-                                            for ivs in near_ivs {
-                                                msgs.push(format!("{:?}", ivs.to_tuple()));
-                                            }
-                                        }
-
-                                        eprintln!("{}", msgs.join("\n"));
-                                        ivs = read_ivs();
-                                        continue;
-                                    },
-
-                                    Some(lv) => lv,
-                                };
-
-                                break;
-                            }
-
+                            changed_pdir.insert(cd.clone(), true);
                         }
+                    },
+
+                    "rm" => {
+                        let pokemons = pdir.get_mut(&cd).unwrap();
+                        if remove_pokemons(&mut *pokemons) {
+                            changed_pdir.insert(cd.clone(), true);
+                            println!("削除しました。");
+                        }
+                    },
+
+                    "save" => {
+                        save_pokemons(&pdir, &mut changed_pdir);
+                        println!("保存しました。");
                     },
 
                     "effect" => {
@@ -188,6 +142,105 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_pokemons() -> (HashMap<String, Vec<Pokemon>>, HashMap<String, bool>) {
+    let mut poke_path = dirs::home_dir().unwrap();
+    poke_path.push("pokemons");
+
+    let mut pdir = HashMap::new();
+    let mut changed_pdir = HashMap::new();
+
+    for entry in poke_path.read_dir().expect("pokemonsディレクトリの読み込みに失敗") {
+        let entry = entry.expect("pokemonsディレクトリの読み込みに失敗");
+
+        let file_name = entry.file_name().to_string_lossy().into_owned();
+
+        let pokemons = {
+            let f = File::open(&poke_path.join(file_name.clone())).unwrap();
+            let mut reader = BufReader::new(f);
+            pokemon::load_pokemons(&mut reader).unwrap()
+        };
+
+        pdir.insert(file_name.clone(), pokemons);
+        changed_pdir.insert(file_name, false);
+    }
+
+    (pdir, changed_pdir)
+}
+
+fn save_pokemons(pdir: &HashMap<String, Vec<Pokemon>>, changed_pdir: &mut HashMap<String, bool>) {
+    let mut poke_path = dirs::home_dir().unwrap();
+    poke_path.push("pokemons");
+
+    for (k, v) in &mut *changed_pdir {
+        if *v && pdir.get(k).is_some() {
+            let file_name = poke_path.join(k);
+
+            let mut writer = File::create(&poke_path.join(file_name.clone())).unwrap();
+
+            let _ = pokemon::save_pokemons(&mut writer, pdir.get(k).unwrap());
+
+            *v = false;
+        }
+    }
+}
+
+fn ls_print(pokes: &Vec<Pokemon>) {
+    let width = pokes.iter().map(|p| p.name().len() * 2 / 3).max();
+
+    if let Some(width) = width {
+        for p in pokes {
+            println!("{}", p.format(width));
+        }
+    }
+}
+
+fn create_pokemon() -> Option<Pokemon> {
+    let dict = match pokepedia::skim_pokepedia() {
+        None => { return None; },
+        Some(dict) => dict
+    };
+    println!("ポケモン: {}", dict.name());
+
+    let mut cp = read_cp();
+    let mut ivs = read_ivs();
+
+    let lv = match calc_lv_or_read_again(dict, &mut cp, &mut ivs) {
+        None => { return None; },
+        Some(lv) => lv,
+    };
+
+    println!("ポケモンLv: {}", lv);
+
+    let fast_move = read_fast_move(dict);
+    println!("ノーマルアタック: {}", fast_move.name());
+
+    let charge_move1 = read_charge_move1(dict);
+    println!("スペシャルアタック1: {}", charge_move1.name());
+
+    let charge_move2 = read_charge_move2(dict);
+    if let Some(mv) = charge_move2 {
+        println!("スペシャルアタック2: {}", mv.name());
+    }
+
+    Some(Pokemon::raw_new(dict, lv, ivs, fast_move, charge_move1, charge_move2))
+}
+
+fn remove_pokemons(pokemons: &mut Vec<Pokemon>) -> bool {
+    let width = pokemons.iter().map(|p| p.name().len() * 2 / 3).max();
+
+    if let Some(width) = width {
+        match pokemon::skim_pokemons(&pokemons, width) {
+            None => false,
+            Some(i) => {
+                pokemons.remove(i);
+                true
+            }
+        }
+    } else {
+        false
+    }
 }
 
 fn read_cp() -> i32 {
@@ -280,5 +333,52 @@ fn read_charge_move2(dict: &'static Pokepedia) -> Option<&'static ChargeMove> {
         if let Some(mv) = moves::skim_charge_move_in_dict(dict) {
             return Some(mv);
         }
+    }
+}
+
+fn calc_lv_or_read_again(dict: &'static Pokepedia, cp: &mut i32, ivs: &mut IVs) -> Option<f32> {
+    let mut lv;
+
+    loop {
+        lv = match calc_lv(dict, *cp, *ivs) {
+            None => {
+                let near_ivs = search_near_iv(dict, *cp, *ivs);
+
+                if near_ivs.is_empty() {
+                    eprintln!("CPか個体値の入力が間違っている。");
+
+                    if !yes_or_no("CPと個体値を入力しなおす？(Yesならyを入力): ") {
+                        return None;
+                    }
+
+                    *cp = read_cp();
+                    *ivs = read_ivs();
+                } else {
+                    let mut msgs = vec![];
+                    msgs.push(format!("{}: ポケモンレベルの取得に失敗(CP({})か個体値({:?})が間違っている)",
+                              dict.name(), *cp, ivs.to_tuple()));
+
+                    msgs.push("もしかして、この値?".to_string());
+
+                    for ivs in near_ivs {
+                        msgs.push(format!("{:?}", ivs.to_tuple()));
+                    }
+
+                    eprintln!("{}", msgs.join("\n"));
+
+                    if !yes_or_no("個体値を入力しなおす？(Yesならyを入力): ") {
+                        return None;
+                    }
+
+                    *ivs = read_ivs();
+                }
+
+                continue;
+            },
+
+            Some(lv) => lv,
+        };
+
+        return Some(lv);
     }
 }

@@ -659,9 +659,9 @@ impl Player {
 
 #[test]
 fn test_player() {
-    let p0 = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, (10, 9, 12)).unwrap();
-    let p1 = Pokemon::new("ブラッキー", "バークアウト", "あくのはどう", None, 1498, None, (2, 14, 0)).unwrap();
-    let p2 = Pokemon::new("ナマズン", "みずでっぽう", "どろばくだん", None, 1474, None, (8, 15, 14)).unwrap();
+    let p0 = Pokemon::new("ココロモリ", None, (10, 9, 12), "エアスラッシュ", "サイコファング", None, 1489).unwrap();
+    let p1 = Pokemon::new("ブラッキー", None, (2, 14, 0), "バークアウト", "あくのはどう", None, 1498).unwrap();
+    let p2 = Pokemon::new("ナマズン", None, (8, 15, 14), "みずでっぽう", "どろばくだん", None, 1474).unwrap();
 
     let mut p = Player::new(String::from("test"), vec![p0, p1, p2]);
 
@@ -920,7 +920,7 @@ impl BattlePokemon {
 
 #[test]
 fn test_battle_pokemon() {
-    let koko = Pokemon::new("ココロモリ", "エアスラッシュ", "サイコファング", None, 1489, None, (10, 9, 12)).unwrap();
+    let koko = Pokemon::new("ココロモリ", None, (10, 9, 12), "エアスラッシュ", "サイコファング", None, 1489).unwrap();
 
     let mut p = BattlePokemon::new(Arc::new(koko));
 

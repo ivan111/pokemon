@@ -9,8 +9,7 @@ pub fn scp_ranking(limit_cp: i32, limit_lv: f32) -> Vec<Pokemon> {
 
     for p in &POKEPEDIA {
         if let Some((_, lv, ivs)) = calc_max_scp_iv_limited_by_cp(limit_cp, limit_lv, p) {
-            let poke = Pokemon::new(p.name(), p.fast_moves()[0].name(), p.charge_moves()[0].name(), None,
-                                    0, Some(lv), ivs.to_tuple()).unwrap();
+            let poke = Pokemon::raw_new(p, lv, ivs, p.fast_moves()[0], p.charge_moves()[0], None);
             v.push(poke);
         }
     }
