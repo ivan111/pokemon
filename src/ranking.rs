@@ -1,6 +1,6 @@
 //! ポケモンのランキングを作る
 
-use crate::pokepedia::{Pokepedia, POKEPEDIA};
+use crate::pokepedia::POKEPEDIA;
 use crate::pokemon::Pokemon;
 use crate::index::calc_max_scp_iv_limited_by_cp;
 
@@ -15,7 +15,7 @@ pub fn scp_ranking(limit_cp: i32, limit_lv: f32) -> Vec<Pokemon> {
         }
     }
 
-     v.sort_by(|a, b| b.scp().cmp(&a.scp()));
+     v.sort_by_key(|p| std::cmp::Reverse(p.scp()));
 
     v
 }

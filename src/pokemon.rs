@@ -9,7 +9,6 @@ use crate::pokepedia::{Pokepedia, pokepedia_by_name};
 use crate::types::Type;
 use crate::moves::{FastMove, ChargeMove, fast_move_by_name, charge_move_by_name};
 use crate::cpm::cpm;
-use crate::index::calc_lv_limited_by_cp;
 
 #[derive(Debug, Clone)]
 pub struct Pokemon {
@@ -133,7 +132,7 @@ impl IVs {
         Ok(Self { attack, defense, stamina })
     }
 
-    pub fn to_tuple(&self) -> (i32, i32, i32) {
+    pub fn to_tuple(self) -> (i32, i32, i32) {
         (self.attack, self.defense, self.stamina)
     }
 }
@@ -152,6 +151,14 @@ impl fmt::Display for PokemonError {
 impl std::error::Error for PokemonError { }
 
 impl Pokemon {
+    pub fn raw_new(dict: &'static Pokepedia, lv: f32, ivs: IVs,
+                fast_move: &'static FastMove, charge_move1: &'static ChargeMove,
+                charge_move2: Option<&'static ChargeMove>
+                ) -> Result<Self, PokemonError> {
+
+        Ok(Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 })
+    }
+
     /// cpがマイナスのときは-cpを超えない、CPとポケモンレベルの最大値を自動で計算する
     pub fn new(name: &str, fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
            mut cp: i32, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32)) -> Result<Self, PokemonError> {
@@ -198,7 +205,18 @@ impl Pokemon {
 
         let fast_move = match fast_move_by_name(fast_move) {
             None => {
-                let message = format!("{}: 存在しないノーマルアタック(fast_move): {}", dict.name(), fast_move);
+                let mut message = format!("{}: 存在しないノーマルアタック(fast_move): {}", dict.name(), fast_move);
+
+                if fast_move == "ウェザーボール" {
+                    message += "\n'ウェザーボール(ノーマル)', 'ウェザーボール(ほのお)'";
+                    message += "\n'ウェザーボール(こおり)', 'ウェザーボール(いわ)'";
+                    message += "\n'ウェザーボール(みず)' のどれか。";
+                } else if fast_move == "テクノバスター" {
+                    message += "\n'テクノバスター(ノーマル)', 'テクノバスター(ほのお)'";
+                    message += "\n'テクノバスター(こおり)', 'テクノバスター(みず)'";
+                    message += "\n'テクノバスター(でんき)' のどれか。";
+                }
+
                 return Err(PokemonError { message });
             },
             Some(mv) => mv,
@@ -295,6 +313,12 @@ impl Pokemon {
     pub fn hp(&self) -> i32 {
         self.stats().stamina.floor() as i32
     }
+
+    pub fn print(&self) {
+        let stats = self.stats();
+        println!("{} CP {} SCP {} Lv {} HP {} Atk {:.1} Def {:.1}",
+                 self.name(), self.cp(), self.scp(), self.lv, self.hp(), stats.attack, stats.defense);
+    }
 }
 
 /// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
@@ -337,7 +361,7 @@ struct PokemonJson {
     charge_move2: Option<String>,
 }
 
-fn search_near_iv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Vec<IVs> {
+pub fn search_near_iv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Vec<IVs> {
     let mut near_ivs = vec![];
 
     let near_attack_iv = vec![ivs.attack-1, ivs.attack, ivs.attack+1].into_iter().filter(|v| 0 <= *v && *v <= 15).collect::<Vec<_>>();

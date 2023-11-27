@@ -1,3 +1,5 @@
+use crate::utils::jp_fixed_width_string;
+
 /// 技の属性
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Type {
@@ -127,9 +129,8 @@ impl Type {
         println!("----------------------------------------------------------------------------------");
 
         for i in 0..NUM_TYPES {
-            let name = TYPE_NAMES[i];
-            let num_spaces = 10 - (name.len() / 3 * 2);
-            print!("{}{:<width$}| ", name, "", width=num_spaces);
+            let name = jp_fixed_width_string(TYPE_NAMES[i], 10);
+            print!("{}| ", name);
 
             for k in 0..NUM_TYPES {
                 let effect;
