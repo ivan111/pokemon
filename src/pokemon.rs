@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::fmt;
 
+use anyhow::Result;
 use serde::Deserialize;
 
 use crate::pokepedia::{Pokepedia, pokepedia_by_name};
@@ -105,7 +106,7 @@ fn test_calc_index() {
 }
 
 /// 個体値(Individual Values)
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub struct IVs {
     pub attack: i32,
     pub defense: i32,
@@ -345,15 +346,18 @@ fn test_calc_lv() {
 }
 
 #[derive(Debug, Deserialize)]
-struct PokemonJson {
+struct PokemonsToml {
+    pokemons: Vec<PokemonToml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PokemonToml {
     name: String,
     cp: i32,
     hp: Option<i32>,
 
     // 個体値(0～15)
-    attack_iv: i32,
-    defense_iv: i32,
-    stamina_iv: i32,
+    ivs: IVs,
 
     // 技
     fast_move: String,
@@ -383,14 +387,18 @@ pub fn search_near_iv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Vec<IVs> {
     near_ivs
 }
 
-pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>, std::io::Error> {
+pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
     let mut pokemons = vec![];
 
-    let data: Vec<PokemonJson> = serde_json::from_reader(reader)?;
+    let mut contents = String::new();
 
-    for d in data {
-        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2, d.cp, None,
-                                (d.attack_iv, d.defense_iv, d.stamina_iv));
+    let _ = reader.read_to_string(&mut contents);
+
+    let data: PokemonsToml = toml::from_str(&contents)?;
+
+    for d in &data.pokemons {
+        let poke = Pokemon::new(&d.name, &d.fast_move, &d.charge_move1, d.charge_move2.clone(), d.cp, None,
+                                (d.ivs.attack, d.ivs.defense, d.ivs.stamina));
 
         match poke {
             Ok(poke) => {
@@ -412,44 +420,41 @@ pub fn load_pokemon<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>, std::io::Er
 
 #[test]
 fn test_load_pokemon() {
-    let poke_json = r#"
-[
-    {
-        "name": "ココロモリ",
-        "cp": 1489,
-        "attack_iv": 10,
-        "defense_iv": 9,
-        "stamina_iv": 12,
-        "fast_move": "エアスラッシュ",
-        "charge_move1": "サイコファング",
-        "charge_move2": null
-    },
-    {
-        "name": "キレイハナ",
-        "cp": 1479,
-        "attack_iv": 2,
-        "defense_iv": 15,
-        "stamina_iv": 6,
-        "fast_move": "マジカルリーフ",
-        "charge_move1": "リーフブレード",
-        "charge_move2": null
-    },
-    {
-        "name": "ナマズン",
-        "cp": 1474,
-        "attack_iv": 8,
-        "defense_iv": 15,
-        "stamina_iv": 14,
-        "fast_move": "みずでっぽう",
-        "charge_move1": "どろばくだん",
-        "charge_move2": null
-    }
-]
+    let poke_toml = r#"
+[[pokemons]]
+name = "ココロモリ"
+cp = 1489
+hp = 135
+ivs.attack = 10
+ivs.defense = 9
+ivs.stamina = 12
+fast_move = "エアスラッシュ"
+charge_move1 = "サイコファング"
+
+[[pokemons]]
+name = "キレイハナ"
+cp = 1479
+#hp = 
+ivs.attack = 2
+ivs.defense = 15
+ivs.stamina = 6
+fast_move = "マジカルリーフ"
+charge_move1 = "リーフブレード"
+
+[[pokemons]]
+name = "ナマズン"
+cp = 1474
+#hp = 
+ivs.attack = 8
+ivs.defense = 15
+ivs.stamina = 14
+fast_move = "みずでっぽう"
+charge_move1 = "どろばくだん"
     "#;
 
     use std::io::Cursor;
 
-    let mut reader = Cursor::new(poke_json);
+    let mut reader = Cursor::new(poke_toml);
     let pokemons = match load_pokemon(&mut reader) {
         Err(err) => panic!("{}", err),
         Ok(v) => v,

@@ -20,7 +20,7 @@ use crate::moves::{FastMove, ChargeMove};
 
 fn main() -> Result<()> {
     let mut file_name = dirs::home_dir().unwrap();
-    file_name.push("mypokemon.json");
+    file_name.push("poke_data.toml");
     println!("load {:?}", file_name);
 
     let mut pokemons = {
