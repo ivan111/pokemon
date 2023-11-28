@@ -19,7 +19,24 @@ impl SkimItem for NameItem {
     }
 }
 
+/// ひらがな・カタカナとasciiだけで構成された文字列の幅を返す
+/// それ以外の文字列を渡した場合の結果は保証しない
+pub fn jp_width(s: &str) -> usize {
+    let mut w = 0;
+
+    for ch in s.chars() {
+        let v = ch as usize;
+        if (0x3040..=0x309f).contains(&v) || (0x30a0..=0x30ff).contains(&v) {
+            w += 2;
+        } else {
+            w += 1;
+        }
+    }
+
+    w
+}
+
 pub fn jp_fixed_width_string(s: &str, w: usize) -> String {
-    let num_spaces = std::cmp::max(w as isize - (s.len() / 3 * 2) as isize, 0);
+    let num_spaces = std::cmp::max(w as isize - jp_width(s) as isize, 0);
     format!("{}{:<width$}", s, "", width=num_spaces as usize)
 }

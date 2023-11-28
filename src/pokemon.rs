@@ -8,9 +8,9 @@ use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use skim::prelude::*;
 
-use crate::pokepedia::{Pokepedia, pokepedia_by_name};
+use crate::pokepedia::{Pokepedia, pokepedia_by_name, pokepedia_by_no};
 use crate::types::Type;
-use crate::moves::{FastMove, ChargeMove, Buff, fast_move_by_name, charge_move_by_name};
+use crate::moves::{FastMove, ChargeMove, Buff, fast_move_by_name, charge_move_by_name, fast_move_by_no, charge_move_by_no};
 use crate::cpm::cpm;
 use crate::battle::rank_mul;
 use crate::utils::jp_fixed_width_string;
@@ -164,6 +164,50 @@ impl Pokemon {
         Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 }
     }
 
+    pub fn new_by_no(no: &str, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32),
+               fast_move_no: &str, charge_move1_no: &str, charge_move2_no: Option<String>,
+               cp: i32) -> Result<Self, PokemonError> {
+        let dict = match pokepedia_by_no(no) {
+            None => {
+                let message = format!("存在しないポケモン: no = {}", no);
+                return Err(PokemonError { message });
+            },
+            Some(dict) => dict,
+        };
+
+        let fast_move = match fast_move_by_no(fast_move_no) {
+            None => {
+                let message = format!("{}: 存在しないノーマルアタック: no = {}", dict.name(), fast_move_no);
+                return Err(PokemonError { message });
+            },
+            Some(mv) => mv,
+        };
+
+        let charge_move1 = match charge_move_by_no(charge_move1_no) {
+            None => {
+                let message = format!("{}: 存在しないスペシャルアタック1: no = {}", dict.name(), charge_move1_no);
+                return Err(PokemonError { message });
+            },
+            Some(mv) => mv,
+        };
+
+        let charge_move2 = match charge_move2_no {
+            None => None,
+            Some(mv_no) => {
+                match charge_move_by_no(&mv_no) {
+                    None => {
+                        let message = format!("{}: 存在しないスペシャルアタック2: no = {}", dict.name(), mv_no);
+                        return Err(PokemonError { message });
+                    },
+                    Some(mv) => Some(mv.name().to_string()),
+                }
+            }
+        };
+
+        Self::new(dict.name(), pokemon_lv, ivs_tuple, fast_move.name(), charge_move1.name(),
+                  charge_move2, cp)
+    }
+
     pub fn new(name: &str, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32),
                fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
                cp: i32) -> Result<Self, PokemonError> {
@@ -210,7 +254,7 @@ impl Pokemon {
 
         let fast_move = match fast_move_by_name(fast_move) {
             None => {
-                let mut message = format!("{}: 存在しないノーマルアタック(fast_move): {}", dict.name(), fast_move);
+                let mut message = format!("{}: 存在しないノーマルアタック: {}", dict.name(), fast_move);
 
                 if fast_move == "ウェザーボール" {
                     message += "\n'ウェザーボール(ノーマル)', 'ウェザーボール(ほのお)'";
@@ -229,7 +273,7 @@ impl Pokemon {
 
         let charge_move1 = match charge_move_by_name(charge_move1) {
             None => {
-                let message = format!("{}: 存在しないスペシャルアタック(charge_move1): {}", dict.name(), charge_move1);
+                let message = format!("{}: 存在しないスペシャルアタック1: {}", dict.name(), charge_move1);
                 return Err(PokemonError { message });
             },
             Some(mv) => mv,
@@ -240,7 +284,7 @@ impl Pokemon {
             Some(mv_str) => {
                 match charge_move_by_name(&mv_str) {
                     None => {
-                        let message = format!("{}: 存在しないスペシャルアタック(charge_move2): {}", dict.name(), mv_str);
+                        let message = format!("{}: 存在しないスペシャルアタック2: {}", dict.name(), mv_str);
                         return Err(PokemonError { message });
                     },
                     Some(mv) => Some(mv),
@@ -253,6 +297,10 @@ impl Pokemon {
 
     pub fn dict(&self) -> &'static Pokepedia {
         self.dict
+    }
+
+    pub fn no(&self) -> &'static str {
+        self.dict.no()
     }
 
     pub fn name(&self) -> &'static str {
@@ -556,7 +604,7 @@ struct PokemonsToml {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PokemonToml {
-    name: String,
+    no: String,
     cp: i32,
     hp: Option<i32>,
 
@@ -601,7 +649,7 @@ pub fn load_pokemons<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
     let data: PokemonsToml = toml::from_str(&contents)?;
 
     for d in &data.pokemons {
-        let poke = Pokemon::new(&d.name, None, (d.ivs.attack, d.ivs.defense, d.ivs.stamina),
+        let poke = Pokemon::new_by_no(&d.no, None, (d.ivs.attack, d.ivs.defense, d.ivs.stamina),
                                 &d.fast_move, &d.charge_move1, d.charge_move2.clone(), d.cp);
 
         match poke {
@@ -695,13 +743,13 @@ pub fn save_pokemons<W: Write>(writer: &mut W, pokemons: &Vec<Pokemon>) -> Resul
     let mut v = Vec::new();
 
     for p in pokemons {
-        let name = p.name().to_string();
-        let fast_move = p.fast_move().name().to_string();
-        let charge_move1 = p.charge_move1().name().to_string();
+        let no = p.no().to_string();
+        let fast_move = p.fast_move().no().to_string();
+        let charge_move1 = p.charge_move1().no().to_string();
 
-        let charge_move2 = p.charge_move2.map(|mv| String::from(mv.name()));
+        let charge_move2 = p.charge_move2.map(|mv| String::from(mv.no()));
 
-        let ptoml = PokemonToml { name, cp: p.cp(), hp: Some(p.hp()), ivs: p.ivs,
+        let ptoml = PokemonToml { no, cp: p.cp(), hp: Some(p.hp()), ivs: p.ivs,
                       fast_move, charge_move1, charge_move2 };
 
         v.push(ptoml);

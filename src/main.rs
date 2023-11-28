@@ -18,6 +18,7 @@ use rustyline::{DefaultEditor, Result};
 use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
+use crate::utils::jp_width;
 
 fn main() -> Result<()> {
     let mut cd = "main".to_string();  // カレントディレクトリ
@@ -195,7 +196,7 @@ fn save_pokemons(pdir: &HashMap<String, Vec<Pokemon>>, changed_pdir: &mut HashMa
 }
 
 fn ls_print(pokes: &[Pokemon]) {
-    let width = pokes.iter().map(|p| p.name().len() * 2 / 3).max();
+    let width = pokes.iter().map(|p| jp_width(p.name())).max();
 
     if let Some(width) = width {
         for p in pokes {
@@ -236,7 +237,7 @@ fn create_pokemon() -> Option<Pokemon> {
 }
 
 fn select_pokemon_mut(pokemons: &mut [Pokemon]) -> Option<&mut Pokemon> {
-    let width = pokemons.iter().map(|p| p.name().len() * 2 / 3).max();
+    let width = pokemons.iter().map(|p| jp_width(p.name())).max();
 
     if let Some(width) = width {
         match pokemon::skim_pokemons(pokemons, width) {
@@ -293,7 +294,7 @@ fn edit_pokemon(poke: &mut Pokemon) {
 }
 
 fn remove_pokemons(pokemons: &mut Vec<Pokemon>) -> bool {
-    let width = pokemons.iter().map(|p| p.name().len() * 2 / 3).max();
+    let width = pokemons.iter().map(|p| jp_width(p.name())).max();
 
     if let Some(width) = width {
         match pokemon::skim_pokemons(pokemons, width) {
