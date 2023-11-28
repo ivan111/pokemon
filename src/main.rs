@@ -81,8 +81,13 @@ fn main() -> Result<()> {
                     "ls_moves" => {
                         let pokemons = pdir.get(&cd).unwrap();
                         if let Some(poke) = select_pokemon(pokemons) {
-                            ls_moves(&mut poke.move_perm());
+                            ls_moves(&poke.move_perm());
                         }
+                    },
+
+                    "top" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        top_ecp(pokemons);
                     },
 
                     "cd" => {
@@ -336,16 +341,18 @@ fn save_pokemons(pdir: &HashMap<String, Vec<Pokemon>>, changed_pdir: &mut HashMa
 }
 
 fn ls_print(pokes: &[Pokemon]) {
-    let width = pokes.iter().map(|p| jp_width(p.name())).max();
+    if pokes.is_empty() {
+        return;
+    }
 
-    if let Some(width) = width {
-        for p in pokes {
-            println!("{}", p.format(width));
-        }
+    let width = pokes.iter().map(|p| jp_width(p.name())).max().unwrap();
+
+    for p in pokes {
+        println!("{}", p.format(width));
     }
 }
 
-fn ls_moves(pokes: &mut [Pokemon]) {
+fn ls_moves(pokes: &[Pokemon]) {
     if pokes.is_empty() {
         return;
     }
@@ -357,15 +364,17 @@ fn ls_moves(pokes: &mut [Pokemon]) {
     let mut w_cm1 = 0;
     let mut w_cm2 = 0;
 
-    for p in &mut *pokes {
+    for p in pokes {
         w_fm = std::cmp::max(w_fm, jp_width(&p.fast_move_desc()));
         w_cm1 = std::cmp::max(w_cm1, jp_width(&p.charge_move1_desc()));
         w_cm2 = std::cmp::max(w_cm2, jp_width(&p.charge_move2_desc()));
     }
 
-    pokes.sort_by_key(|p| -p.avg_ecp(1));
+    let mut sorted = pokes.to_vec();
 
-    for p in pokes {
+    sorted.sort_by_key(|p| -p.avg_ecp(1));
+
+    for p in sorted {
         let ecp2 = p.avg_ecp(2);
         let ecp1 = p.avg_ecp(1);
         let ecp0 = p.avg_ecp(0);
@@ -375,6 +384,40 @@ fn ls_moves(pokes: &mut [Pokemon]) {
         let cm2 = jp_fixed_width_string(&p.charge_move2_desc(), w_cm2);
 
         println!("ECP[2] {:>4} [1] {:>4} [0] {:>4},  {} {} {}", ecp2, ecp1, ecp0, fm, cm1, cm2);
+    }
+}
+
+fn top_ecp(pokes: &[Pokemon]) {
+    if pokes.is_empty() {
+        return;
+    }
+
+    let width = pokes.iter().map(|p| jp_width(p.name())).max().unwrap();
+
+    let mut sorted = pokes.to_vec();
+    sorted.sort_by_key(|p| -p.avg_ecp(1));
+
+    for p in sorted {
+        let name = jp_fixed_width_string(p.name(), width);
+
+        let ecp1 = p.avg_ecp(1);
+        let fm = p.fast_move_desc();
+        let cm1 = p.charge_move1_desc();
+        let cm2 = p.charge_move2_desc();
+
+        let mut perm = p.move_perm();
+        perm.sort_by_key(|p| -p.avg_ecp(1));
+        let top = &perm[0];
+
+        let top_ecp1 = top.avg_ecp(1);
+        let top_fm = top.fast_move_desc();
+        let top_cm1 = top.charge_move1_desc();
+        let top_cm2 = top.charge_move2_desc();
+
+        println!("{} CP {} SCP {}", name, p.cp(), p.scp());
+        println!("    cur ECP1 {:>4} {} {} {}", ecp1, fm, cm1, cm2);
+        println!("    top ECP1 {:>4} {} {} {}", top_ecp1, top_fm, top_cm1, top_cm2);
+        println!();
     }
 }
 
