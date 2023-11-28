@@ -164,7 +164,6 @@ impl Pokemon {
         Pokemon { dict, lv, ivs, fast_move, charge_move1, charge_move2 }
     }
 
-    /// cpがマイナスのときは-cpを超えない、CPとポケモンレベルの最大値を自動で計算する
     pub fn new(name: &str, pokemon_lv: Option<f32>, ivs_tuple: (i32, i32, i32),
                fast_move: &str, charge_move1: &str, charge_move2: Option<String>,
                cp: i32) -> Result<Self, PokemonError> {
@@ -272,6 +271,16 @@ impl Pokemon {
         self.dict.base_stats()
     }
 
+    pub fn set_cp(&mut self, cp: i32) -> bool {
+        match calc_lv(self.dict, cp, self.ivs) {
+            None => false,
+            Some(lv) => {
+                self.lv = lv;
+                true
+            },
+        }
+    }
+
     pub fn lv(&self) -> f32 {
         self.lv
     }
@@ -292,12 +301,24 @@ impl Pokemon {
         self.fast_move
     }
 
+    pub fn set_fast_move(&mut self, fast_move: &'static FastMove) {
+        self.fast_move = fast_move;
+    }
+
     pub fn charge_move1(&self) -> &'static ChargeMove {
         self.charge_move1
     }
 
+    pub fn set_charge_move1(&mut self, charge_move1: &'static ChargeMove) {
+        self.charge_move1 = charge_move1;
+    }
+
     pub fn charge_move2(&self) -> Option<&'static ChargeMove> {
         self.charge_move2
+    }
+
+    pub fn set_charge_move2(&mut self, charge_move2: Option<&'static ChargeMove>) {
+        self.charge_move2 = charge_move2;
     }
 
     pub fn cp(&self) -> i32 {
@@ -327,9 +348,16 @@ impl Pokemon {
     pub fn format(&self, width: usize) -> String {
         let stats = self.stats();
         let name = jp_fixed_width_string(self.name(), width);
-        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3})",
+        let charge_move2_name = if let Some(mv) = self.charge_move2() {
+            mv.name()
+        } else {
+            "None"
+        };
+
+        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3}) {} {} {}",
                  name, self.cp(), self.scp(), self.ecp(), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
-                 stats.attack, stats.defense, self.hp())
+                 stats.attack, stats.defense, self.hp(), self.fast_move().name(), self.charge_move1().name(),
+                 charge_move2_name)
     }
 
     /// 1ターンあたりの平均的なわざの威力を計算する
@@ -416,6 +444,8 @@ impl Pokemon {
                 } else {
                     damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
                 }
+
+                is_first_charge_move = false;
 
                 // ステータス変化
                 if let Some(Buff(you_buff_atk, you_buff_def, opponent_buff_atk, opponent_buff_def)) = mv.buff() {
@@ -736,7 +766,7 @@ pub fn skim_pokemons(pokemons: &[Pokemon], width: usize) -> Option<usize> {
     if selected_items.len() == 1 {
         match selected_items[0].output().parse::<usize>() {
             Ok(i) => Some(i),
-            Err(err) => None,
+            Err(_err) => None,
         }
     } else {
         None

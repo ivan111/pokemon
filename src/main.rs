@@ -105,6 +105,14 @@ fn main() -> Result<()> {
                         }
                     },
 
+                    "e" | "edit" => {
+                        let pokemons = pdir.get_mut(&cd).unwrap();
+                        if let Some(poke) = select_pokemon_mut(&mut *pokemons) {
+                            edit_pokemon(poke);
+                            changed_pdir.insert(cd.clone(), true);
+                        }
+                    },
+
                     "rm" => {
                         let pokemons = pdir.get_mut(&cd).unwrap();
                         if remove_pokemons(&mut *pokemons) {
@@ -186,7 +194,7 @@ fn save_pokemons(pdir: &HashMap<String, Vec<Pokemon>>, changed_pdir: &mut HashMa
     }
 }
 
-fn ls_print(pokes: &Vec<Pokemon>) {
+fn ls_print(pokes: &[Pokemon]) {
     let width = pokes.iter().map(|p| p.name().len() * 2 / 3).max();
 
     if let Some(width) = width {
@@ -225,6 +233,63 @@ fn create_pokemon() -> Option<Pokemon> {
     }
 
     Some(Pokemon::raw_new(dict, lv, ivs, fast_move, charge_move1, charge_move2))
+}
+
+fn select_pokemon_mut(pokemons: &mut [Pokemon]) -> Option<&mut Pokemon> {
+    let width = pokemons.iter().map(|p| p.name().len() * 2 / 3).max();
+
+    if let Some(width) = width {
+        match pokemon::skim_pokemons(pokemons, width) {
+            None => None,
+            Some(i) => {
+                Some(&mut pokemons[i])
+            }
+        }
+    } else {
+        None
+    }
+}
+
+fn edit_pokemon(poke: &mut Pokemon) {
+    loop {
+        let mut input = String::new();
+
+        print!("(q)uit, (c)p, (f)ast move, charge move(1) | (2), (r)emove charge move 2: ");
+        io::stdout().flush().unwrap();
+        io::stdin().read_line(&mut input).expect("読み込みに失敗");
+
+        match input.trim() {
+            "c" => {
+                let cp = read_cp();
+                if poke.set_cp(cp) {
+                    println!("CPを'{}'に変更", cp);
+                } else {
+                    eprintln!("CPが間違っている");
+                }
+            },
+            "f" => {
+                let fast_move = read_fast_move(poke.dict());
+                poke.set_fast_move(fast_move);
+                println!("ノーマルアタックを'{}'に変更", fast_move.name());
+            },
+            "1" => {
+                let charge_move = read_charge_move1(poke.dict());
+                poke.set_charge_move1(charge_move);
+                println!("スペシャルアタック1を'{}'に変更", charge_move.name());
+            },
+            "2" => {
+                let charge_move = read_charge_move1(poke.dict());
+                poke.set_charge_move2(Some(charge_move));
+                println!("スペシャルアタック2を'{}'に変更", charge_move.name());
+            },
+            "r" => {
+                poke.set_charge_move2(None);
+                println!("スペシャルアタック2を削除");
+            },
+            "q" => { return; },
+            _ => (),
+        }
+    }
 }
 
 fn remove_pokemons(pokemons: &mut Vec<Pokemon>) -> bool {
@@ -337,10 +402,8 @@ fn read_charge_move2(dict: &'static Pokepedia) -> Option<&'static ChargeMove> {
 }
 
 fn calc_lv_or_read_again(dict: &'static Pokepedia, cp: &mut i32, ivs: &mut IVs) -> Option<f32> {
-    let mut lv;
-
     loop {
-        lv = match calc_lv(dict, *cp, *ivs) {
+        let lv = match calc_lv(dict, *cp, *ivs) {
             None => {
                 let near_ivs = search_near_iv(dict, *cp, *ivs);
 
