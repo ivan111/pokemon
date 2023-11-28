@@ -69,6 +69,16 @@ impl FastMove {
 
         self.power as f64 * stab * type_effect
     }
+
+    // PPT(Power Per Turn, ターン当たりの威力)
+    pub fn ppt(&self, self_types: &[Type], opponent_types: &[Type]) -> f64 {
+        self.real_power2(self_types, opponent_types) / self.turns as f64
+    }
+
+    // EPT(Energy Per Turn, ターン当たりのエネルギー充填)
+    pub fn ept(&self) -> f64 {
+        self.energy as f64 / self.turns as f64
+    }
 }
 
 pub fn skim_fast_move() -> Option<&'static FastMove> {
@@ -262,6 +272,23 @@ impl ChargeMove {
     // PPE(Power Per Energy, エネルギー当たりの威力)
     pub fn ppe(&self, self_types: &[Type], opponent_types: &[Type]) -> f64 {
         self.real_power2(self_types, opponent_types) / self.energy as f64
+    }
+
+    /// 最初に使えるようになるまでのターン
+    pub fn first_enable_turn(&self, mv: &'static FastMove) -> i32 {
+        let mut turn = 0;
+        let mut energy = 0;
+
+        for _ in 0..100 {
+            if energy >= self.energy {
+                return turn + 1;
+            }
+
+            energy += mv.energy();
+            turn += mv.turns();
+        }
+
+        100
     }
 }
 

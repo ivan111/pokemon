@@ -2,6 +2,7 @@
 
 use std::io::{Read, Write};
 use std::fmt;
+use std::collections::HashSet;
 
 use rand::prelude::*;
 use anyhow::Result;
@@ -9,7 +10,7 @@ use serde::{Serialize, Deserialize};
 use skim::prelude::*;
 
 use crate::pokepedia::{Pokepedia, pokepedia_by_name, pokepedia_by_no};
-use crate::types::Type;
+use crate::types::{Type, TYPES};
 use crate::moves::{FastMove, ChargeMove, Buff, fast_move_by_name, charge_move_by_name, fast_move_by_no, charge_move_by_no};
 use crate::cpm::cpm;
 use crate::battle::rank_mul;
@@ -393,19 +394,35 @@ impl Pokemon {
         self.stats().stamina.floor() as i32
     }
 
+    pub fn fast_move_desc(&self) -> String {
+        let mv = self.fast_move();
+        format!("({:3.1}, {:3.1}, {}){}", mv.ppt(&self.types(), &Vec::new()), mv.ept(), mv.turns(), mv.name())
+    }
+
+    pub fn charge_move1_desc(&self) -> String {
+        let mv = self.charge_move1();
+        format!("({:3.1}, {:>2}){}", mv.ppe(&self.types(), &Vec::new()), mv.first_enable_turn(self.fast_move), mv.name())
+    }
+
+    pub fn charge_move2_desc(&self) -> String {
+        if let Some(mv) = self.charge_move2() {
+            format!("({:3.1}, {:>2}){}", mv.ppe(&self.types(), &Vec::new()), mv.first_enable_turn(self.fast_move), mv.name())
+        } else {
+            "None".to_string()
+        }
+    }
+
     pub fn format(&self, width: usize) -> String {
         let stats = self.stats();
         let name = jp_fixed_width_string(self.name(), width);
-        let charge_move2_name = if let Some(mv) = self.charge_move2() {
-            mv.name()
-        } else {
-            "None"
-        };
 
-        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3}) {} | {} | {}",
-                 name, self.cp(), self.scp(), self.ecp(None), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
-                 stats.attack, stats.defense, self.hp(), self.fast_move().name(), self.charge_move1().name(),
-                 charge_move2_name)
+        let fm_desc = self.fast_move_desc();
+        let cm1_desc = self.charge_move1_desc();
+        let cm2_desc = self.charge_move2_desc();
+
+        format!("{} CP {:>4} SCP {:>4} ECP1 {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3}) {} | {} | {}",
+                 name, self.cp(), self.scp(), self.avg_ecp(1), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
+                 stats.attack, stats.defense, self.hp(), fm_desc, cm1_desc, cm2_desc)
     }
 
     /// 1ターンあたりの平均的なわざの威力を計算する
@@ -416,8 +433,7 @@ impl Pokemon {
     /// * 相手は引数で指定するが、Noneの場合は自分との対戦。
     ///   自分との対戦では相性の効果は無効とする。
     ///
-    /// * シールドは最初のスペシャルアタックのときに使用される。
-    ///   それ以外は使用しない。
+    /// * シールドはあれば使われるとする。
     ///
     /// * 使用するスペシャルアタックは最初は必要エネルギーが低いほうを使う。
     ///   2回目以降は、PPE(Power Per Energy: エネルギー当たりの威力)が大きいほうを使う。
@@ -430,7 +446,7 @@ impl Pokemon {
     ///
     /// * 自分の防御のステータス変化は相手の防御への逆ステータス変化とする。
     ///   相手の攻撃のステータス変化は自分の攻撃への逆ステータス変化とする。
-    fn calc_power_per_turn(&self, opponent: Option<&Pokemon>) -> (f64, i32) {
+    pub fn calc_power_per_turn(&self, opponent: Option<&Pokemon>, custom_types: Option<Vec<Type>>, mut num_shields: i32) -> (f64, i32) {
         let types;
         let defender;
 
@@ -438,33 +454,36 @@ impl Pokemon {
             types = p.types();
             defender = p;
         } else {
-            types = Vec::new();  // 自分との対戦では相性を無視する
+            if let Some(v) = custom_types {
+                types = v;
+            } else {
+                types = Vec::new();  // 自分との対戦では相性を無視する
+            }
+
             defender = self;
         }
 
         let min_hp = defender.hp();
 
         let mut total_damage = 0;
-        let mut num_shields = 1;
         let mut num_turns = 0;
         let mut sum_power = 0.0;
         let mut energy = 0;
-        let mut is_first_charge_move = true;
 
-        let first_use_charge_move;  // 最初に使うスペシャルアタック。シールドがあるので実際にはダメージを与えない。
+        let shield_charge_move;  // 相手にシールドがある間に使うスペシャルアタック
         let charge_move;
 
         if let Some(mv2) = defender.charge_move2() {
             let mv1 = defender.charge_move1();
 
-            first_use_charge_move = if mv1.energy() < mv2.energy() { mv1 } else { mv2 };
+            shield_charge_move = if mv1.energy() < mv2.energy() { mv1 } else { mv2 };
 
             let ppe1 = mv1.ppe(&self.types(), &types);
             let ppe2 = mv2.ppe(&self.types(), &types);
 
             charge_move = if ppe1 > ppe2 { mv1 } else { mv2 };
         } else {
-            first_use_charge_move = defender.charge_move1();
+            shield_charge_move = defender.charge_move1();
             charge_move = defender.charge_move1();
         }
 
@@ -477,7 +496,7 @@ impl Pokemon {
         let mut rng: rand::rngs::StdRng = rand::SeedableRng::from_seed(seed);
 
         while total_damage < min_hp {
-            let mv =  if is_first_charge_move { first_use_charge_move } else { charge_move };
+            let mv = if num_shields > 0 { shield_charge_move } else { charge_move };
 
             let damage;
 
@@ -493,8 +512,6 @@ impl Pokemon {
                     sum_power += power;
                     damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
                 }
-
-                is_first_charge_move = false;
 
                 // ステータス変化
                 if let Some(Buff(you_buff_atk, you_buff_def, opponent_buff_atk, opponent_buff_def)) = mv.buff() {
@@ -538,8 +555,8 @@ impl Pokemon {
     /// ECP(Extended Combat Power, 拡張戦闘力)を計算して返す。
     /// ECPは自分が考えた指標でゲームでは表示されることはない。
     /// ECPは攻撃力・防御力・耐久性に加えて、技の威力、ステータス変化、タイプ相性も考慮に入れる。
-    pub fn ecp(&self, opponent: Option<&Pokemon>) -> i32 {
-        let (ppt, _) = self.calc_power_per_turn(opponent);
+    pub fn ecp(&self, opponent: Option<&Pokemon>, custom_types: Option<Vec<Type>>, num_shields: i32) -> i32 {
+        let (ppt, _) = self.calc_power_per_turn(opponent, custom_types, num_shields);
         let sc_ppt = ppt * PPT_SCALE;
 
         let stats = self.stats();
@@ -550,6 +567,45 @@ impl Pokemon {
         } else {
             ecp
         }
+    }
+
+    /// すべてのタイプの平均ECP
+    pub fn avg_ecp(&self, num_shields: i32) -> i32 {
+        let mut v = Vec::new();
+
+        for t in TYPES {
+            let types = vec![t];
+
+            v.push(self.ecp(None, Some(types), num_shields));
+        }
+
+        v.iter().sum::<i32>() / v.len() as i32
+    }
+
+    pub fn move_perm(&self) -> Vec<Pokemon> {
+        let mut v = Vec::new();
+        let mut set = HashSet::new();
+
+        for fast_move in self.dict.fast_moves() {
+            for charge_move1 in self.dict.charge_moves() {
+                for charge_move2 in self.dict.charge_moves() {
+                    if charge_move1.no() == charge_move2.no() {
+                        continue;
+                    }
+
+                    // (A, B)と(B, A)のときは片方しか処理しない
+                    if set.contains(&(charge_move1.no().to_string() + charge_move2.no())) {
+                        continue;
+                    }
+
+                    v.push(Pokemon { dict: self.dict, lv: self.lv, ivs: self.ivs, fast_move, charge_move1, charge_move2: Some(charge_move2) });
+
+                    set.insert(charge_move2.no().to_string() + charge_move1.no());
+                }
+            }
+        }
+
+        v
     }
 }
 
@@ -566,12 +622,12 @@ fn test_calc_power_per_turn() {
     let kure = Pokemon::new("クレセリア", Some(20.0), (2, 15, 13), "ねんりき", "みらいよち", None, 0).unwrap();
     let fude = Pokemon::new("フーディン", Some(18.0), (1, 15, 15), "ねんりき", "みらいよち", None, 0).unwrap();
 
-    let (ppt0, num_turns0) = kure.calc_power_per_turn(Some(&fude));
-    assert_eq!(ppt0, 6.782608695652174);
+    let (ppt0, num_turns0) = kure.calc_power_per_turn(Some(&fude), None, 1);
+    assert_eq!(ppt0, 4.8478260869565215);
     assert_eq!(num_turns0, 46);
 
-    let (ppt1, num_turns1) = fude.calc_power_per_turn(Some(&kure));
-    assert_eq!(ppt1, 6.0);
+    let (ppt1, num_turns1) = fude.calc_power_per_turn(Some(&kure), None, 1);
+    assert_eq!(ppt1, 4.4655172413793105);
     assert_eq!(num_turns1, 58);
 }
 
@@ -675,34 +731,41 @@ pub fn load_pokemons<R: Read>(reader: &mut R) -> Result<Vec<Pokemon>> {
 fn test_load_pokemon() {
     let poke_toml = r#"
 [[pokemons]]
-name = "ココロモリ"
+no = "0528"
 cp = 1489
 hp = 135
-ivs.attack = 10
-ivs.defense = 9
-ivs.stamina = 12
-fast_move = "エアスラッシュ"
-charge_move1 = "サイコファング"
+fast_move = "255"
+charge_move1 = "353"
+charge_move2 = "275"
+
+[pokemons.ivs]
+attack = 10
+defense = 9
+stamina = 12
 
 [[pokemons]]
-name = "キレイハナ"
+no = "0182"
 cp = 1479
-#hp = 
-ivs.attack = 2
-ivs.defense = 15
-ivs.stamina = 6
-fast_move = "マジカルリーフ"
-charge_move1 = "リーフブレード"
+hp = 124
+fast_move = "357"
+charge_move1 = "117"
+
+[pokemons.ivs]
+attack = 2
+defense = 15
+stamina = 6
 
 [[pokemons]]
-name = "ナマズン"
+no = "0340"
 cp = 1474
-#hp = 
-ivs.attack = 8
-ivs.defense = 15
-ivs.stamina = 14
-fast_move = "みずでっぽう"
-charge_move1 = "どろばくだん"
+hp = 174
+fast_move = "230"
+charge_move1 = "096"
+
+[pokemons.ivs]
+attack = 8
+defense = 15
+stamina = 14
     "#;
 
     use std::io::Cursor;
@@ -736,7 +799,7 @@ charge_move1 = "どろばくだん"
     assert_eq!(p.hp(), 135);
     assert_eq!(p.fast_move().name(), "エアスラッシュ");
     assert_eq!(p.charge_move1().name(), "サイコファング");
-    assert_eq!(p.charge_move2().is_none(), true);
+    assert_eq!(p.charge_move2().unwrap().name(), "みらいよち");
 }
 
 pub fn save_pokemons<W: Write>(writer: &mut W, pokemons: &Vec<Pokemon>) -> Result<()> {

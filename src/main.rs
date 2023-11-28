@@ -78,6 +78,13 @@ fn main() -> Result<()> {
                         }
                     },
 
+                    "ls_moves" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        if let Some(poke) = select_pokemon(pokemons) {
+                            ls_moves(&mut poke.move_perm());
+                        }
+                    },
+
                     "cd" => {
                         match words.len() {
                             1 => { cd = "main".to_string(); },
@@ -142,7 +149,39 @@ fn main() -> Result<()> {
                         println!("保存しました。");
                     },
 
-                    "ecp" => {
+                    "sim" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        let opponents = pdir.get("sl_tr").unwrap();
+                        let width = pokemons.iter().map(|p| jp_width(p.name())).max();
+                        let len = opponents.len();
+
+                        if let Some(width) = width {
+                            for poke in pokemons {
+                                let mut num_wins = [0; 3];
+
+                                for p in opponents {
+                                    let mut turns0: [i32; 3] = [0; 3];
+                                    let mut turns1: [i32; 3] = [0; 3];
+                                    let mut ratio: [f64; 3] = [0.0; 3];
+
+                                    for i in 0..=2 {
+                                        (_, turns0[i]) = poke.calc_power_per_turn(Some(p), None, i as i32);
+                                        (_, turns1[i]) = p.calc_power_per_turn(Some(poke), None, i as i32);
+                                        ratio[i] = turns1[i] as f64 / turns0[i] as f64;
+
+                                        if turns0[i] < turns1[i] {
+                                            num_wins[i] += 1;
+                                        }
+                                    }
+                                }
+
+                                let name = jp_fixed_width_string(poke.name(), width);
+                                println!("{} {:2},  {:2},  {:2} / {}", name, num_wins[0], num_wins[1], num_wins[2], len);
+                            }
+                        }
+                    },
+
+                    "sim1" => {
                         let pokemons = pdir.get(&cd).unwrap();
                         if let Some(poke) = select_pokemon(pokemons) {
                             println!("{}", poke.format(jp_width(poke.name())));
@@ -151,45 +190,57 @@ fn main() -> Result<()> {
                             let width = opponents.iter().map(|p| jp_width(p.name())).max();
 
                             if let Some(width) = width {
-                                let mut num_wins = 0;
+                                let mut num_wins = [0; 3];
                                 let len = opponents.len();
 
                                 for p in opponents {
                                     let name = jp_fixed_width_string(p.name(), width);
-                                    let my_ecp = poke.ecp(Some(p));
-                                    let opp_ecp = p.ecp(Some(poke));
-                                    let ratio = my_ecp as f64 / opp_ecp as f64;
 
-                                    if my_ecp > opp_ecp {
-                                        num_wins += 1;
+                                    let mut turns0: [i32; 3] = [0; 3];
+                                    let mut turns1: [i32; 3] = [0; 3];
+                                    let mut ratio: [f64; 3] = [0.0; 3];
+
+                                    for i in 0..=2 {
+                                        (_, turns0[i]) = poke.calc_power_per_turn(Some(p), None, i as i32);
+                                        (_, turns1[i]) = p.calc_power_per_turn(Some(poke), None, i as i32);
+                                        ratio[i] = turns1[i] as f64 / turns0[i] as f64;
+
+                                        if turns0[i] < turns1[i] {
+                                            num_wins[i] += 1;
+                                        }
                                     }
 
                                     let result;
 
-                                    if ratio >= 1.3 {
+                                    let r = &ratio[1];
+
+                                    if *r >= 1.3 {
                                         result = "oooo";
-                                    } else if ratio >= 1.2 {
+                                    } else if *r >= 1.2 {
                                         result = "ooo ";
-                                    } else if ratio >= 1.1 {
+                                    } else if *r >= 1.1 {
                                         result = "oo  ";
-                                    } else if ratio >= 1.03 {
+                                    } else if *r >= 1.03 {
                                         result = "o   ";
-                                    } else if ratio >= 0.97 {
+                                    } else if *r >= 0.97 {
                                         result = "-   ";
-                                    } else if ratio >= 0.9 {
+                                    } else if *r >= 0.9 {
                                         result = "x   ";
-                                    } else if ratio >= 0.8 {
+                                    } else if *r >= 0.8 {
                                         result = "xx  ";
-                                    } else if ratio >= 0.7 {
+                                    } else if *r >= 0.7 {
                                         result = "xxx ";
                                     } else {
                                         result = "xxxx";
                                     }
 
-                                    println!("{} {} {:.2} ({}, {})", result, name, ratio, my_ecp, opp_ecp);
+                                    println!("{} {} (0) {}/{} = {:.2} (1) {}/{} = {:.2} (2) {}/{} = {:.2}", result, name,
+                                             turns1[2], turns0[2], ratio[2],
+                                             turns1[1], turns0[1], ratio[1],
+                                             turns1[0], turns0[0], ratio[0]);
                                 }
 
-                                println!("wins {} / {}", num_wins, len);
+                                println!("wins {},  {},  {} / {}", num_wins[0], num_wins[1], num_wins[2], len);
                             }
                         }
                     },
@@ -218,6 +269,28 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn ratio_to_rank(ratio: f64) -> &'static str {
+    if ratio >= 1.3 {
+        "oooo"
+    } else if ratio >= 1.2 {
+        "ooo "
+    } else if ratio >= 1.1 {
+        "oo  "
+    } else if ratio >= 1.03 {
+        "o   "
+    } else if ratio >= 0.97 {
+        "-   "
+    } else if ratio >= 0.9 {
+        "x   "
+    } else if ratio >= 0.8 {
+        "xx  "
+    } else if ratio >= 0.7 {
+        "xxx "
+    } else {
+        "xxxx"
+    }
 }
 
 fn load_pokemons() -> (HashMap<String, Vec<Pokemon>>, HashMap<String, bool>) {
@@ -269,6 +342,39 @@ fn ls_print(pokes: &[Pokemon]) {
         for p in pokes {
             println!("{}", p.format(width));
         }
+    }
+}
+
+fn ls_moves(pokes: &mut [Pokemon]) {
+    if pokes.is_empty() {
+        return;
+    }
+
+    println!("{} CP {} SCP {}", pokes[0].name(), pokes[0].cp(), pokes[0].scp());
+    println!("(PPT turns) fast_move,  (PPE turns) charge_move");
+
+    let mut w_fm = 0;
+    let mut w_cm1 = 0;
+    let mut w_cm2 = 0;
+
+    for p in &mut *pokes {
+        w_fm = std::cmp::max(w_fm, jp_width(&p.fast_move_desc()));
+        w_cm1 = std::cmp::max(w_cm1, jp_width(&p.charge_move1_desc()));
+        w_cm2 = std::cmp::max(w_cm2, jp_width(&p.charge_move2_desc()));
+    }
+
+    pokes.sort_by_key(|p| -p.avg_ecp(1));
+
+    for p in pokes {
+        let ecp2 = p.avg_ecp(2);
+        let ecp1 = p.avg_ecp(1);
+        let ecp0 = p.avg_ecp(0);
+
+        let fm = jp_fixed_width_string(&p.fast_move_desc(), w_fm);
+        let cm1 = jp_fixed_width_string(&p.charge_move1_desc(), w_cm1);
+        let cm2 = jp_fixed_width_string(&p.charge_move2_desc(), w_cm2);
+
+        println!("ECP[2] {:>4} [1] {:>4} [0] {:>4},  {} {} {}", ecp2, ecp1, ecp0, fm, cm1, cm2);
     }
 }
 
