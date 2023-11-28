@@ -484,12 +484,13 @@ impl Pokemon {
             if energy >= mv.energy() {
                 energy = std::cmp::max(0, energy - mv.energy());
                 let power = mv.real_power2(&self.types(), &types);
-                sum_power += power;
 
                 if num_shields > 0 {
+                    sum_power += 1.0;   // シールドを張られた時の威力は1とする
                     damage = 1;
                     num_shields -= 1;
                 } else {
+                    sum_power += power;
                     damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
                 }
 
