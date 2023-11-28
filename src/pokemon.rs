@@ -3,14 +3,16 @@
 use std::io::{Read, Write};
 use std::fmt;
 
+use rand::prelude::*;
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use skim::prelude::*;
 
 use crate::pokepedia::{Pokepedia, pokepedia_by_name};
 use crate::types::Type;
-use crate::moves::{FastMove, ChargeMove, fast_move_by_name, charge_move_by_name};
+use crate::moves::{FastMove, ChargeMove, Buff, fast_move_by_name, charge_move_by_name};
 use crate::cpm::cpm;
+use crate::battle::rank_mul;
 use crate::utils::jp_fixed_width_string;
 
 #[derive(Debug, Clone)]
@@ -325,76 +327,174 @@ impl Pokemon {
     pub fn format(&self, width: usize) -> String {
         let stats = self.stats();
         let name = jp_fixed_width_string(self.name(), width);
-        format!("{} CP {:>4} SCP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3})",
-                 name, self.cp(), self.scp(), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
+        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3})",
+                 name, self.cp(), self.scp(), self.ecp(), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
                  stats.attack, stats.defense, self.hp())
     }
 
     /// 1ターンあたりの平均的なわざの威力を計算する
-    fn calc_power_per_turn(&self) -> f64 {
+    /// 戻り値は(PPT, 倒すまでのターン数)
+    ///
+    /// 攻撃をシミュレートするが、戦略は以下の通り。
+    ///
+    /// * 相手は引数で指定するが、Noneの場合は自分との対戦。
+    ///   自分との対戦では相性の効果は無効とする。
+    ///
+    /// * シールドは最初のスペシャルアタックのときに使用される。
+    ///   それ以外は使用しない。
+    ///
+    /// * 使用するスペシャルアタックは最初は必要エネルギーが低いほうを使う。
+    ///   2回目以降は、PPE(Power Per Energy: エネルギー当たりの威力)が大きいほうを使う。
+    ///
+    /// * 相手のHPを0にしたときの威力は、そのままの値を威力として使う。
+    ///   たとえば、最後の攻撃でダメージを50与えられるとすると、
+    ///   相手のHPが1残っていようが、49残っていようが、計算に使用する威力の値は同じとする。
+    ///   つまり、相手のHPは実際にはもともとのHPを初めて超えた総ダメージとする。
+    ///   説明が下手で何を言っているかわかりにくいと思う。
+    ///
+    /// * 自分の防御のステータス変化は相手の防御への逆ステータス変化とする。
+    ///   相手の攻撃のステータス変化は自分の攻撃への逆ステータス変化とする。
+    fn calc_power_per_turn(&self, opponent: Option<&Pokemon>) -> (f64, i32) {
+        let types;
+        let defender;
+
+        if let Some(p) = opponent {
+            types = p.types();
+            defender = p;
+        } else {
+            types = Vec::new();  // 自分との対戦では相性を無視する
+            defender = self;
+        }
+
+        let min_hp = defender.hp();
+
+        let mut total_damage = 0;
+        let mut num_shields = 1;
         let mut num_turns = 0;
         let mut sum_power = 0.0;
         let mut energy = 0;
+        let mut is_first_charge_move = true;
 
-        let types = self.types();
-
+        let first_use_charge_move;  // 最初に使うスペシャルアタック。シールドがあるので実際にはダメージを与えない。
         let charge_move;
 
-        if let Some(mv) = self.charge_move2() {
-            let pte1 = self.charge_move1().pte();
-            let pte2 = mv.pte();
+        if let Some(mv2) = defender.charge_move2() {
+            let mv1 = defender.charge_move1();
 
-            if pte1 > pte2 {
-                charge_move = self.charge_move1();
-            } else {
-                charge_move = mv;
-            }
+            first_use_charge_move = if mv1.energy() < mv2.energy() { mv1 } else { mv2 };
+
+            let ppe1 = mv1.ppe(&self.types(), &types);
+            let ppe2 = mv2.ppe(&self.types(), &types);
+
+            charge_move = if ppe1 > ppe2 { mv1 } else { mv2 };
         } else {
-            charge_move = self.charge_move1();
+            first_use_charge_move = defender.charge_move1();
+            charge_move = defender.charge_move1();
         }
 
-        while num_turns < MAX_ACP_TURNS {
-            if energy >= charge_move.energy() {
-                energy = std::cmp::max(0, energy - charge_move.energy());
-                sum_power += charge_move.real_power(&types);
+        let atk = self.stats().attack;
+        let def = defender.stats().defense;
+        let mut atk_buff: i8 = 0;
+        let mut def_buff: i8 = 0;
+
+        let seed = [0u8; 32];
+        let mut rng: rand::rngs::StdRng = rand::SeedableRng::from_seed(seed);
+
+        while total_damage < min_hp {
+            let mv =  if is_first_charge_move { first_use_charge_move } else { charge_move };
+
+            let damage;
+
+            if energy >= mv.energy() {
+                energy = std::cmp::max(0, energy - mv.energy());
+                let power = mv.real_power2(&self.types(), &types);
+                sum_power += power;
+
+                if num_shields > 0 {
+                    damage = 1;
+                    num_shields -= 1;
+                } else {
+                    damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
+                }
+
+                // ステータス変化
+                if let Some(Buff(you_buff_atk, you_buff_def, opponent_buff_atk, opponent_buff_def)) = mv.buff() {
+                    let rand_val = rng.gen::<f32>() * 100.0;
+
+                    if rand_val < mv.buff_prob() {
+                        if you_buff_atk != 0 {
+                            atk_buff = std::cmp::max(-4, std::cmp::min(atk_buff + you_buff_atk, 4))
+                        }
+
+                        if you_buff_def != 0 {
+                            def_buff = std::cmp::max(-4, std::cmp::min(def_buff - you_buff_def, 4))
+                        }
+
+                        if opponent_buff_atk != 0 {
+                            atk_buff = std::cmp::max(-4, std::cmp::min(atk_buff - opponent_buff_atk, 4))
+                        }
+
+                        if opponent_buff_def != 0 {
+                            def_buff = std::cmp::max(-4, std::cmp::min(def_buff + opponent_buff_def, 4))
+                        }
+                    }
+                }
+
                 num_turns += 1;
             } else {
                 let fast_move = self.fast_move();
                 energy = std::cmp::min(energy + fast_move.energy(), 100);
-                sum_power += fast_move.real_power(&types);
+                let power = fast_move.real_power2(&self.types(), &types);
+                sum_power += power;
+                damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
                 num_turns += fast_move.turns();
             }
+
+            total_damage += damage;
         }
 
-        sum_power / num_turns as f64
+        (sum_power / num_turns as f64, num_turns)
     }
 
-    /// ACP(Advanced Combat Power, 発展型戦闘力)を計算して返す。
-    /// ACPは自分が指標でゲームでは表示されることはない。
-    /// ACPは攻撃力・防御力・耐久性に加えて、技の威力も考慮に入れる。
-    pub fn calc_acp(&self) -> i32 {
-        let ppt = self.calc_power_per_turn();
-        println!("ppt = {:.2}", ppt);
+    /// ECP(Extended Combat Power, 拡張戦闘力)を計算して返す。
+    /// ECPは自分が指標でゲームでは表示されることはない。
+    /// ECPは攻撃力・防御力・耐久性に加えて、技の威力、ステータス変化、タイプ相性も考慮に入れる。
+    pub fn ecp(&self) -> i32 {
+        let (ppt, _) = self.calc_power_per_turn(None);
+        let sc_ppt = ppt * PPT_SCALE;
 
-        (self.scp() as f64 * ppt / 10.0).floor() as i32
+        let stats = self.stats();
+        let ecp = ((sc_ppt * stats.attack * stats.defense * stats.stamina.floor()).sqrt() / 10.0) as i32;
+
+        if ecp < 10 {
+            10
+        } else {
+            ecp
+        }
     }
+}
+
+const PPT_SCALE: f64 = 16.0;
+
+fn calc_damage(power: f64, attack: f64, defense: f64) -> i32 {
+    (0.5 * crate::battle::TRAINER_BATTLE_BONUS * power * (attack / defense)).floor() as i32 + 1
 }
 
 const MAX_ACP_TURNS: i32 = 128;
 
-/*
 #[test]
-fn test_calc_acp() {
-    let kure = pokepedia_by_name("クレセリア").unwrap();
-    let ivs = IVs::new(2, 15, 13).unwrap();
-    assert_eq!(calc_acp(kure, 20.0, ivs, "ねんりき", "みらいよち", None), 1982);
+fn test_calc_power_per_turn() {
+    let kure = Pokemon::new("クレセリア", Some(20.0), (2, 15, 13), "ねんりき", "みらいよち", None, 0).unwrap();
+    let fude = Pokemon::new("フーディン", Some(18.0), (1, 15, 15), "ねんりき", "みらいよち", None, 0).unwrap();
 
-    let fude = pokepedia_by_name("フーディン").unwrap();
-    let ivs = IVs::new(1, 15, 15).unwrap();
-    assert_eq!(calc_acp(fude, 18.0, ivs, "ねんりき", "みらいよち", None), 1399);
+    let (ppt0, num_turns0) = kure.calc_power_per_turn(Some(&fude));
+    assert_eq!(ppt0, 6.782608695652174);
+    assert_eq!(num_turns0, 46);
+
+    let (ppt1, num_turns1) = fude.calc_power_per_turn(Some(&kure));
+    assert_eq!(ppt1, 6.0);
+    assert_eq!(num_turns1, 58);
 }
-
-*/
 
 /// 引数として渡された種族値、CP、個体値からポケモンレベルを計算して返す。
 pub fn calc_lv(poke: &Pokepedia, cp: i32, ivs: IVs) -> Option<f32> {
@@ -569,10 +669,7 @@ pub fn save_pokemons<W: Write>(writer: &mut W, pokemons: &Vec<Pokemon>) -> Resul
         let fast_move = p.fast_move().name().to_string();
         let charge_move1 = p.charge_move1().name().to_string();
 
-        let charge_move2 = match p.charge_move2 {
-            None => None,
-            Some(mv) => Some(String::from(mv.name())),
-        };
+        let charge_move2 = p.charge_move2.map(|mv| String::from(mv.name()));
 
         let ptoml = PokemonToml { name, cp: p.cp(), hp: Some(p.hp()), ivs: p.ivs,
                       fast_move, charge_move1, charge_move2 };

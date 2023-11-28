@@ -35,7 +35,7 @@ fn main() -> Result<()> {
                 let line = src_line.trim();
                 let _ = rl.add_history_entry(line);
                 let words = line.split_whitespace().collect::<Vec<_>>();
-                if words.len() == 0 {
+                if words.is_empty() {
                     continue;
                 }
                 let cmd = words[0];
@@ -231,7 +231,7 @@ fn remove_pokemons(pokemons: &mut Vec<Pokemon>) -> bool {
     let width = pokemons.iter().map(|p| p.name().len() * 2 / 3).max();
 
     if let Some(width) = width {
-        match pokemon::skim_pokemons(&pokemons, width) {
+        match pokemon::skim_pokemons(pokemons, width) {
             None => false,
             Some(i) => {
                 pokemons.remove(i);

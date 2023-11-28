@@ -53,12 +53,21 @@ impl FastMove {
         self.turns
     }
 
+    /// タイプ一致ボーナスを考慮した威力
     pub fn real_power(&self, types: &[Type]) -> f64 {
         if types.iter().any(|t| t == &self.mtype) {
             self.power as f64 * STAB
         } else {
             self.power as f64
         }
+    }
+
+    /// タイプ相性とタイプ一致ボーナスを考慮した威力
+    pub fn real_power2(&self, self_types: &[Type], opponent_types: &[Type]) -> f64 {
+        let stab = if self_types.iter().any(|t| t == &self.mtype) { STAB } else { 1.0 };
+        let type_effect = self.mtype.type_effect_bonus(opponent_types);
+
+        self.power as f64 * stab * type_effect
     }
 }
 
@@ -233,6 +242,7 @@ impl ChargeMove {
         self.buff_prob
     }
 
+    /// タイプ一致ボーナスを考慮した威力
     pub fn real_power(&self, types: &[Type]) -> f64 {
         if types.iter().any(|t| t == &self.mtype) {
             self.power as f64 * STAB
@@ -241,8 +251,17 @@ impl ChargeMove {
         }
     }
 
-    pub fn pte(&self) -> f64 {
-        self.power as f64 / self.energy as f64
+    /// タイプ相性とタイプ一致ボーナスを考慮した威力
+    pub fn real_power2(&self, self_types: &[Type], opponent_types: &[Type]) -> f64 {
+        let stab = if self_types.iter().any(|t| t == &self.mtype) { STAB } else { 1.0 };
+        let type_effect = self.mtype.type_effect_bonus(opponent_types);
+
+        self.power as f64 * stab * type_effect
+    }
+
+    // PPE(Power Per Energy, エネルギー当たりの威力)
+    pub fn ppe(&self, self_types: &[Type], opponent_types: &[Type]) -> f64 {
+        self.real_power2(self_types, opponent_types) / self.energy as f64
     }
 }
 
