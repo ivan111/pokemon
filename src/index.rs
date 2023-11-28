@@ -39,7 +39,7 @@ fn test_calc_lv_limited_by_cp() {
 }
 
 /// 一番SCPが高くなる個体値の組み合わせを計算する。
-/// 戻り値はOption<(SCP, ポケモンレベル, 攻撃個体値, 防御個体値, 耐久個体値)>
+/// 戻り値はOption<(SCP, ポケモンレベル, IVs(攻撃個体値, 防御個体値, 耐久個体値))>
 pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_lv: f32, dict: &Pokepedia) -> Option<(i32, f32, IVs)> {
     let mut max_scp = 0;
     let mut max_scp_ivs = None;

@@ -18,7 +18,7 @@ use rustyline::{DefaultEditor, Result};
 use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
-use crate::utils::jp_width;
+use crate::utils::{jp_width, jp_fixed_width_string};
 
 fn main() -> Result<()> {
     let mut cd = "main".to_string();  // カレントディレクトリ
@@ -96,6 +96,21 @@ fn main() -> Result<()> {
                         }
                     },
 
+                    "mkdir" => {
+                        if words.len() == 2 {
+                            let name = String::from(words[1]);
+
+                            if pdir.contains_key(&name) {
+                                eprintln!("既に存在するディレクトリ: {}", name);
+                            } else {
+                                pdir.insert(name.clone(), Vec::new());
+                                changed_pdir.insert(name, true);
+                            }
+                        } else {
+                            eprintln!("Usage: mkdir name");
+                        }
+                    },
+
                     "a" | "add" => {
                         if let Some(poke) = create_pokemon() {
                             let v = pdir.get_mut(&cd).unwrap();
@@ -125,6 +140,58 @@ fn main() -> Result<()> {
                     "save" => {
                         save_pokemons(&pdir, &mut changed_pdir);
                         println!("保存しました。");
+                    },
+
+                    "ecp" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        if let Some(poke) = select_pokemon(pokemons) {
+                            println!("{}", poke.format(jp_width(poke.name())));
+
+                            let opponents = pdir.get("sl_tr").unwrap();
+                            let width = opponents.iter().map(|p| jp_width(p.name())).max();
+
+                            if let Some(width) = width {
+                                let mut num_wins = 0;
+                                let len = opponents.len();
+
+                                for p in opponents {
+                                    let name = jp_fixed_width_string(p.name(), width);
+                                    let my_ecp = poke.ecp(Some(p));
+                                    let opp_ecp = p.ecp(Some(poke));
+                                    let ratio = my_ecp as f64 / opp_ecp as f64;
+
+                                    if my_ecp > opp_ecp {
+                                        num_wins += 1;
+                                    }
+
+                                    let result;
+
+                                    if ratio >= 1.3 {
+                                        result = "oooo";
+                                    } else if ratio >= 1.2 {
+                                        result = "ooo ";
+                                    } else if ratio >= 1.1 {
+                                        result = "oo  ";
+                                    } else if ratio >= 1.03 {
+                                        result = "o   ";
+                                    } else if ratio >= 0.97 {
+                                        result = "-   ";
+                                    } else if ratio >= 0.9 {
+                                        result = "x   ";
+                                    } else if ratio >= 0.8 {
+                                        result = "xx  ";
+                                    } else if ratio >= 0.7 {
+                                        result = "xxx ";
+                                    } else {
+                                        result = "xxxx";
+                                    }
+
+                                    println!("{} {} {:.2} ({}, {})", result, name, ratio, my_ecp, opp_ecp);
+                                }
+
+                                println!("wins {} / {}", num_wins, len);
+                            }
+                        }
                     },
 
                     "effect" => {
@@ -236,6 +303,21 @@ fn create_pokemon() -> Option<Pokemon> {
     Some(Pokemon::raw_new(dict, lv, ivs, fast_move, charge_move1, charge_move2))
 }
 
+fn select_pokemon(pokemons: &[Pokemon]) -> Option<&Pokemon> {
+    let width = pokemons.iter().map(|p| jp_width(p.name())).max();
+
+    if let Some(width) = width {
+        match pokemon::skim_pokemons(pokemons, width) {
+            None => None,
+            Some(i) => {
+                Some(&pokemons[i])
+            }
+        }
+    } else {
+        None
+    }
+}
+
 fn select_pokemon_mut(pokemons: &mut [Pokemon]) -> Option<&mut Pokemon> {
     let width = pokemons.iter().map(|p| jp_width(p.name())).max();
 
@@ -333,7 +415,7 @@ fn read_ivs() -> IVs {
     'outer: loop {
         let mut ivs_str = String::new();
 
-        print!("個体値(攻撃 防御 スタミナ (ex) 7 14 3): ");
+        print!("IVs(atk def sta): ");
         io::stdout().flush().unwrap();
         io::stdin().read_line(&mut ivs_str).expect("個体値の読み込みに失敗");
 

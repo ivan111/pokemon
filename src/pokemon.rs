@@ -402,8 +402,8 @@ impl Pokemon {
             "None"
         };
 
-        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3}) {} {} {}",
-                 name, self.cp(), self.scp(), self.ecp(), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
+        format!("{} CP {:>4} SCP {:>4} ECP {:>4} Lv {:>4.1} IVs({:>2}, {:>2}, {:>2}) Stats({:>5.1}, {:>5.1}, {:>3}) {} | {} | {}",
+                 name, self.cp(), self.scp(), self.ecp(None), self.lv, self.ivs.attack, self.ivs.defense, self.ivs.stamina,
                  stats.attack, stats.defense, self.hp(), self.fast_move().name(), self.charge_move1().name(),
                  charge_move2_name)
     }
@@ -535,10 +535,10 @@ impl Pokemon {
     }
 
     /// ECP(Extended Combat Power, 拡張戦闘力)を計算して返す。
-    /// ECPは自分が指標でゲームでは表示されることはない。
+    /// ECPは自分が考えた指標でゲームでは表示されることはない。
     /// ECPは攻撃力・防御力・耐久性に加えて、技の威力、ステータス変化、タイプ相性も考慮に入れる。
-    pub fn ecp(&self) -> i32 {
-        let (ppt, _) = self.calc_power_per_turn(None);
+    pub fn ecp(&self, opponent: Option<&Pokemon>) -> i32 {
+        let (ppt, _) = self.calc_power_per_turn(opponent);
         let sc_ppt = ppt * PPT_SCALE;
 
         let stats = self.stats();

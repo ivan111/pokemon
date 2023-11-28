@@ -168,7 +168,7 @@ pub fn test_pokepedia_uniq() {
 static POKEPEDIA_NO_MAP: OnceLock<HashMap<String, &'static Pokepedia>> = OnceLock::new();
 static POKEPEDIA_NAME_MAP: OnceLock<HashMap<String, &'static Pokepedia>> = OnceLock::new();
 
-pub const NUM_POKEPEDIA: usize = 937;
+pub const NUM_POKEPEDIA: usize = 938;
 
 /// ポケモン図鑑
 pub static POKEPEDIA: [Pokepedia; NUM_POKEPEDIA] = [
@@ -1108,6 +1108,7 @@ pub static POKEPEDIA: [Pokepedia; NUM_POKEPEDIA] = [
     Pokepedia { no: "0922", name: "パモット", s_name: "pamotto", type1: Type::Electric, type2: Some(Type::Fighting), base_stats: Stats::new(147.0, 82.0, 155.0), fast_moves: &[&FAST_MOVES[6], &FAST_MOVES[49]], charge_moves: &[&CHARGE_MOVES[79], &CHARGE_MOVES[35], &CHARGE_MOVES[251]] },
     Pokepedia { no: "0923", name: "パーモット", s_name: "pa-motto", type1: Type::Electric, type2: Some(Type::Fighting), base_stats: Stats::new(232.0, 141.0, 172.0), fast_moves: &[&FAST_MOVES[6], &FAST_MOVES[49], &FAST_MOVES[7]], charge_moves: &[&CHARGE_MOVES[79], &CHARGE_MOVES[35], &CHARGE_MOVES[251], &CHARGE_MOVES[245]] },
     Pokepedia { no: "0962", name: "オトシドリ", s_name: "otosidori", type1: Type::Flying, type2: Some(Type::Dark), base_stats: Stats::new(198.0, 172.0, 172.0), fast_moves: &[&FAST_MOVES[10], &FAST_MOVES[27]], charge_moves: &[&CHARGE_MOVES[333], &CHARGE_MOVES[45], &CHARGE_MOVES[341]] },
+    Pokepedia { no: "0980", name: "ドオー", s_name: "doo-", type1: Type::Poison, type2: Some(Type::Ground), base_stats: Stats::new(127.0, 151.0, 277.0), fast_moves: &[&FAST_MOVES[36], &FAST_MOVES[16]], charge_moves: &[&CHARGE_MOVES[90], &CHARGE_MOVES[31], &CHARGE_MOVES[32], &CHARGE_MOVES[303], &CHARGE_MOVES[105], &CHARGE_MOVES[22]] },
     Pokepedia { no: "0996", name: "セビエ", s_name: "sebie", type1: Type::Dragon, type2: Some(Type::Ice), base_stats: Stats::new(134.0, 86.0, 163.0), fast_moves: &[&FAST_MOVES[4], &FAST_MOVES[127]], charge_moves: &[&CHARGE_MOVES[83], &CHARGE_MOVES[254], &CHARGE_MOVES[277]] },
     Pokepedia { no: "0997", name: "セゴール", s_name: "sego-ru", type1: Type::Dragon, type2: Some(Type::Ice), base_stats: Stats::new(173.0, 128.0, 207.0), fast_moves: &[&FAST_MOVES[4], &FAST_MOVES[127]], charge_moves: &[&CHARGE_MOVES[83], &CHARGE_MOVES[254], &CHARGE_MOVES[277]] },
     Pokepedia { no: "0998", name: "セグレイブ", s_name: "segureibu", type1: Type::Dragon, type2: Some(Type::Ice), base_stats: Stats::new(254.0, 168.0, 229.0), fast_moves: &[&FAST_MOVES[4], &FAST_MOVES[127]], charge_moves: &[&CHARGE_MOVES[83], &CHARGE_MOVES[254], &CHARGE_MOVES[277], &CHARGE_MOVES[40]] },
