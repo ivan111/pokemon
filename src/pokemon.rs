@@ -467,6 +467,7 @@ impl Pokemon {
 
         let mut total_damage = 0;
         let mut num_turns = 0;
+        let mut used_shields = 0;  // シールドを使った数
         let mut sum_power = 0.0;
         let mut energy = 0;
 
@@ -505,9 +506,9 @@ impl Pokemon {
                 let power = mv.real_power2(&self.types(), &types);
 
                 if num_shields > 0 {
-                    sum_power += 1.0;   // シールドを張られた時の威力は1とする
                     damage = 1;
                     num_shields -= 1;
+                    used_shields += 1;
                 } else {
                     sum_power += power;
                     damage = calc_damage(power, atk * rank_mul(atk_buff as i32), def * rank_mul(def_buff as i32));
@@ -549,7 +550,7 @@ impl Pokemon {
             total_damage += damage;
         }
 
-        (sum_power / num_turns as f64, num_turns)
+        (sum_power / (num_turns - used_shields) as f64, num_turns)
     }
 
     /// ECP(Extended Combat Power, 拡張戦闘力)を計算して返す。

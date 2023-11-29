@@ -18,6 +18,7 @@ use rustyline::{DefaultEditor, Result};
 use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
+use crate::types::{NUM_TYPES, TYPE_NAMES, TYPES};
 use crate::utils::{jp_width, jp_fixed_width_string};
 
 fn main() -> Result<()> {
@@ -75,6 +76,13 @@ fn main() -> Result<()> {
                             }
                         } else {
                             ls_print(pdir.get(&cd).unwrap());
+                        }
+                    },
+
+                    "ecp" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        if let Some(poke) = select_pokemon(pokemons) {
+                            print_ecp_table(poke);
                         }
                     },
 
@@ -239,7 +247,7 @@ fn main() -> Result<()> {
                                         result = "xxxx";
                                     }
 
-                                    println!("{} {} (0) {}/{} = {:.2} (1) {}/{} = {:.2} (2) {}/{} = {:.2}", result, name,
+                                    println!("{} {} [2] {}/{} = {:.2} [1] {}/{} = {:.2} [0] {}/{} = {:.2}", result, name,
                                              turns1[2], turns0[2], ratio[2],
                                              turns1[1], turns0[1], ratio[1],
                                              turns1[0], turns0[0], ratio[0]);
@@ -358,7 +366,7 @@ fn ls_moves(pokes: &[Pokemon]) {
     }
 
     println!("{} CP {} SCP {}", pokes[0].name(), pokes[0].cp(), pokes[0].scp());
-    println!("(PPT turns) fast_move,  (PPE turns) charge_move");
+    println!("(PPT, EPT, turns) fast_move,  (PPE, turns) charge_move");
 
     let mut w_fm = 0;
     let mut w_cm1 = 0;
@@ -372,12 +380,12 @@ fn ls_moves(pokes: &[Pokemon]) {
 
     let mut sorted = pokes.to_vec();
 
-    sorted.sort_by_key(|p| -p.avg_ecp(1));
+    sorted.sort_by_key(|p| -p.ecp(None, None, 1));
 
     for p in sorted {
-        let ecp2 = p.avg_ecp(2);
-        let ecp1 = p.avg_ecp(1);
-        let ecp0 = p.avg_ecp(0);
+        let ecp2 = p.ecp(None, None, 2);
+        let ecp1 = p.ecp(None, None, 1);
+        let ecp0 = p.ecp(None, None, 0);
 
         let fm = jp_fixed_width_string(&p.fast_move_desc(), w_fm);
         let cm1 = jp_fixed_width_string(&p.charge_move1_desc(), w_cm1);
@@ -395,21 +403,21 @@ fn top_ecp(pokes: &[Pokemon]) {
     let width = pokes.iter().map(|p| jp_width(p.name())).max().unwrap();
 
     let mut sorted = pokes.to_vec();
-    sorted.sort_by_key(|p| -p.avg_ecp(1));
+    sorted.sort_by_key(|p| -p.ecp(None, None, 1));
 
     for p in sorted {
         let name = jp_fixed_width_string(p.name(), width);
 
-        let ecp1 = p.avg_ecp(1);
+        let ecp1 = p.ecp(None, None, 1);
         let fm = p.fast_move_desc();
         let cm1 = p.charge_move1_desc();
         let cm2 = p.charge_move2_desc();
 
         let mut perm = p.move_perm();
-        perm.sort_by_key(|p| -p.avg_ecp(1));
+        perm.sort_by_key(|p| -p.ecp(None, None, 1));
         let top = &perm[0];
 
-        let top_ecp1 = top.avg_ecp(1);
+        let top_ecp1 = top.ecp(None, None, 1);
         let top_fm = top.fast_move_desc();
         let top_cm1 = top.charge_move1_desc();
         let top_cm2 = top.charge_move2_desc();
@@ -419,6 +427,27 @@ fn top_ecp(pokes: &[Pokemon]) {
         println!("    top ECP1 {:>4} {} {} {}", top_ecp1, top_fm, top_cm1, top_cm2);
         println!();
     }
+}
+
+fn print_ecp_table(poke: &Pokemon) {
+    println!();
+
+    println!("          |  ECP2   ECP1   ECP0");
+    println!("-------------------------------");
+
+    for i in 0..NUM_TYPES {
+        let name = jp_fixed_width_string(TYPE_NAMES[i], 10);
+        print!("{}| ", name);
+
+        let types = vec![TYPES[i]];
+        let ecp2 = poke.ecp(None, Some(types.clone()), 2);
+        let ecp1 = poke.ecp(None, Some(types.clone()), 1);
+        let ecp0 = poke.ecp(None, Some(types), 0);
+
+        println!(" {:>4}   {:>4}   {:>4}", ecp2, ecp1, ecp0);
+    }
+
+    println!();
 }
 
 fn create_pokemon() -> Option<Pokemon> {
