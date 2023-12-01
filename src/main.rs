@@ -6,6 +6,7 @@ mod index;
 mod pokemon;
 mod battle;
 mod ranking;
+mod evolution;
 mod utils;
 
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
 use crate::types::{NUM_TYPES, TYPE_NAMES, TYPES};
+use crate::evolution::rev_evolutions;
 use crate::utils::{jp_width, jp_fixed_width_string};
 
 fn main() -> Result<()> {
@@ -84,6 +86,30 @@ fn main() -> Result<()> {
                         if let Some(poke) = select_pokemon(pokemons) {
                             print_ecp_table(poke);
                         }
+                    },
+
+                    "top_scp" => {
+                        if let Some(dict) = pokepedia::skim_pokepedia() {
+                            if let Some((_, lv, ivs)) = crate::index::calc_top_scp_iv_limited_by_cp(1500, 40.0, dict) {
+                                let p = Pokemon::raw_new(dict, lv, ivs, dict.fast_moves()[0], dict.charge_moves()[0], None);
+                                println!("{}", p.format(jp_width(dict.name())));
+
+                                for child_dict in rev_evolutions(dict.no()) {
+                                    let p = Pokemon::raw_new(child_dict, lv, ivs, child_dict.fast_moves()[0], child_dict.charge_moves()[0], None);
+                                    println!("  {}", p.format(jp_width(child_dict.name())));
+
+                                    for gc_dict in rev_evolutions(child_dict.no()) {
+                                        let p = Pokemon::raw_new(gc_dict, lv, ivs, gc_dict.fast_moves()[0], gc_dict.charge_moves()[0], None);
+                                        println!("    {}", p.format(jp_width(gc_dict.name())));
+
+                                        for ggc_dict in rev_evolutions(gc_dict.no()) {
+                                            let p = Pokemon::raw_new(ggc_dict, lv, ivs, ggc_dict.fast_moves()[0], ggc_dict.charge_moves()[0], None);
+                                            println!("      {}", p.format(jp_width(ggc_dict.name())));
+                                        }
+                                    }
+                                }
+                            }
+                        };
                     },
 
                     "ls_moves" => {

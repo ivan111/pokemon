@@ -97,7 +97,7 @@ pub fn skim_pokepedia() -> Option<&'static Pokepedia> {
     }
 }
 
-/// ポケモンNoからポケモン情報を取得するマップを返す。
+/// ポケモンNoからポケモン情報を取得する。
 #[allow(dead_code)]
 pub fn pokepedia_by_no(no: &str) -> Option<&'static Pokepedia> {
     let m = POKEPEDIA_NO_MAP.get_or_init(|| {
@@ -122,7 +122,7 @@ fn test_pokepedia_by_no() {
     assert_eq!(p.name, "ホゲータ");
 }
 
-/// ポケモン名からポケモン情報を取得するマップを返す。
+/// ポケモン名からポケモン情報を取得する。
 pub fn pokepedia_by_name(name: &str) -> Option<&'static Pokepedia> {
     let m = POKEPEDIA_NAME_MAP.get_or_init(|| {
         let mut m = HashMap::with_capacity(NUM_POKEPEDIA);
@@ -168,7 +168,7 @@ pub fn test_pokepedia_uniq() {
 static POKEPEDIA_NO_MAP: OnceLock<HashMap<String, &'static Pokepedia>> = OnceLock::new();
 static POKEPEDIA_NAME_MAP: OnceLock<HashMap<String, &'static Pokepedia>> = OnceLock::new();
 
-pub const NUM_POKEPEDIA: usize = 938;
+pub const NUM_POKEPEDIA: usize = 939;
 
 /// ポケモン図鑑
 pub static POKEPEDIA: [Pokepedia; NUM_POKEPEDIA] = [
@@ -706,6 +706,7 @@ pub static POKEPEDIA: [Pokepedia; NUM_POKEPEDIA] = [
     Pokepedia { no: "0443", name: "フカマル", s_name: "fukamaru", type1: Type::Dragon, type2: Some(Type::Ground), base_stats: Stats::new(124.0, 84.0, 151.0), fast_moves: &[&FAST_MOVES[82], &FAST_MOVES[16]], charge_moves: &[&CHARGE_MOVES[26], &CHARGE_MOVES[80], &CHARGE_MOVES[131], &CHARGE_MOVES[322], &CHARGE_MOVES[323]] },
     Pokepedia { no: "0444", name: "ガバイト", s_name: "gabaito", type1: Type::Dragon, type2: Some(Type::Ground), base_stats: Stats::new(172.0, 125.0, 169.0), fast_moves: &[&FAST_MOVES[82], &FAST_MOVES[16]], charge_moves: &[&CHARGE_MOVES[26], &CHARGE_MOVES[80], &CHARGE_MOVES[24], &CHARGE_MOVES[322], &CHARGE_MOVES[323]] },
     Pokepedia { no: "0445", name: "ガブリアス", s_name: "gaburiasu", type1: Type::Dragon, type2: Some(Type::Ground), base_stats: Stats::new(261.0, 193.0, 239.0), fast_moves: &[&FAST_MOVES[53], &FAST_MOVES[16]], charge_moves: &[&CHARGE_MOVES[277], &CHARGE_MOVES[31], &CHARGE_MOVES[103], &CHARGE_MOVES[258], &CHARGE_MOVES[304], &CHARGE_MOVES[322], &CHARGE_MOVES[323]] },
+    Pokepedia { no: "0445M", name: "メガガブリアス", s_name: "megagaburiasu", type1: Type::Dragon, type2: Some(Type::Ground), base_stats: Stats::new(339.0, 222.0, 239.0), fast_moves: &[&FAST_MOVES[53], &FAST_MOVES[16]], charge_moves: &[&CHARGE_MOVES[277], &CHARGE_MOVES[31], &CHARGE_MOVES[103], &CHARGE_MOVES[258], &CHARGE_MOVES[304], &CHARGE_MOVES[322], &CHARGE_MOVES[323]] },
     Pokepedia { no: "0446", name: "ゴンベ", s_name: "gonbe", type1: Type::Normal, type2: None, base_stats: Stats::new(137.0, 117.0, 286.0), fast_moves: &[&FAST_MOVES[21], &FAST_MOVES[12]], charge_moves: &[&CHARGE_MOVES[92], &CHARGE_MOVES[131], &CHARGE_MOVES[95]] },
     Pokepedia { no: "0447", name: "リオル", s_name: "rioru", type1: Type::Fighting, type2: None, base_stats: Stats::new(127.0, 78.0, 120.0), fast_moves: &[&FAST_MOVES[43], &FAST_MOVES[19]], charge_moves: &[&CHARGE_MOVES[123], &CHARGE_MOVES[56], &CHARGE_MOVES[28], &CHARGE_MOVES[317]] },
     Pokepedia { no: "0448", name: "ルカリオ", s_name: "rukario", type1: Type::Fighting, type2: Some(Type::Steel), base_stats: Stats::new(236.0, 144.0, 172.0), fast_moves: &[&FAST_MOVES[43], &FAST_MOVES[29]], charge_moves: &[&CHARGE_MOVES[36], &CHARGE_MOVES[70], &CHARGE_MOVES[245], &CHARGE_MOVES[319], &CHARGE_MOVES[332], &CHARGE_MOVES[317]] },

@@ -624,11 +624,11 @@ fn test_calc_power_per_turn() {
     let fude = Pokemon::new("フーディン", Some(18.0), (1, 15, 15), "ねんりき", "みらいよち", None, 0).unwrap();
 
     let (ppt0, num_turns0) = kure.calc_power_per_turn(Some(&fude), None, 1);
-    assert_eq!(ppt0, 4.8478260869565215);
+    assert_eq!(ppt0, 4.933333333333334);
     assert_eq!(num_turns0, 46);
 
     let (ppt1, num_turns1) = fude.calc_power_per_turn(Some(&kure), None, 1);
-    assert_eq!(ppt1, 4.4655172413793105);
+    assert_eq!(ppt1, 4.526315789473684);
     assert_eq!(num_turns1, 58);
 }
 

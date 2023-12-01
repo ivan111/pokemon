@@ -40,9 +40,9 @@ fn test_calc_lv_limited_by_cp() {
 
 /// 一番SCPが高くなる個体値の組み合わせを計算する。
 /// 戻り値はOption<(SCP, ポケモンレベル, IVs(攻撃個体値, 防御個体値, 耐久個体値))>
-pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_lv: f32, dict: &Pokepedia) -> Option<(i32, f32, IVs)> {
-    let mut max_scp = 0;
-    let mut max_scp_ivs = None;
+pub fn calc_top_scp_iv_limited_by_cp(limit_cp: i32, limit_lv: f32, dict: &Pokepedia) -> Option<(i32, f32, IVs)> {
+    let mut top_scp = 0;
+    let mut top_scp_ivs = None;
 
     for ivs in (0..(16*16*16)).map(i2ivs) {
 
@@ -52,21 +52,21 @@ pub fn calc_max_scp_iv_limited_by_cp(limit_cp: i32, limit_lv: f32, dict: &Pokepe
             let stats = dict.base_stats().stats(lv, ivs);
             let scp = stats.calc_scp();
 
-            if scp > max_scp {
-                max_scp = scp;
-                max_scp_ivs = Some((scp, lv, ivs));
+            if scp > top_scp {
+                top_scp = scp;
+                top_scp_ivs = Some((scp, lv, ivs));
             }
         }
     }
 
-    max_scp_ivs
+    top_scp_ivs
 }
 
 #[test]
-fn test_calc_max_scp_iv_limited_by_cp() {
+fn test_calc_top_scp_iv_limited_by_cp() {
     let koko = pokepedia_by_name("ココロモリ").unwrap();
     let ivs = IVs::new(0, 15, 9).unwrap();
-    assert_eq!(calc_max_scp_iv_limited_by_cp(1500, 40.0, koko), Some((1476, 38.0, ivs)));
+    assert_eq!(calc_top_scp_iv_limited_by_cp(1500, 40.0, koko), Some((1476, 38.0, ivs)));
 }
 
 /// 重複順列を作るための変換。
