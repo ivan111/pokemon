@@ -160,6 +160,83 @@ impl Type {
         println!();
     }
 
+    pub fn print_effect_cross() {
+        let mut v_normal = Vec::new();
+        let mut v_normal2 = Vec::new();
+        let mut v_one_side = Vec::new();
+        let mut v_eq = Vec::new();
+
+        for i in 0..NUM_TYPES {
+            for k in 0..NUM_TYPES {
+                if k >= i {
+                    break;
+                }
+
+                let effect = TYPE_EFFECT_MATRIX[i][k];
+                let rev_effect = TYPE_EFFECT_MATRIX[k][i];
+
+                if effect == 0 && rev_effect == 0 {
+                    continue;
+                }
+
+                let name_i = jp_fixed_width_string(TYPE_NAMES[i], 10);
+                let name_k = jp_fixed_width_string(TYPE_NAMES[k], 10);
+
+                let s = format!("{} -> {} = {:>2} {:>2} = {} <- {}", name_i, name_k, effect, rev_effect, name_i, name_k);
+                let rev_s = format!("{} -> {} = {:>2} {:>2} = {} <- {}", name_k, name_i, rev_effect, effect, name_k, name_i);
+
+                if effect == 0 || rev_effect == 0 {  // 片方しか効果が出ないパターン
+                    if rev_effect == 0 {
+                        v_one_side.push(s);
+                    } else {
+                        v_one_side.push(rev_s);
+                    }
+                } else if effect == rev_effect {  // 両方が同じ効果を持つパターン
+                    v_eq.push(s);
+                } else if effect.abs() == rev_effect.abs() {  // 効果が対称的なパターン
+                    if effect > 0 {
+                        v_normal.push(s);
+                    } else {
+                        v_normal.push(rev_s);
+                    }
+                } else {  // 対称的だが片方の効果が少し強い
+                    if rev_effect.abs() > 1 {
+                        v_normal2.push(s);
+                    } else {
+                        v_normal2.push(rev_s);
+                    }
+                }
+            }
+        }
+
+        println!("効果が対称的:");
+
+        for s in &v_normal {
+            println!("{}", s);
+        }
+
+        println!();
+        println!("効果が対称的だが片方がより強い効果:");
+
+        for s in &v_normal2 {
+            println!("{}", s);
+        }
+
+        println!();
+        println!("片方しか効果がない:");
+
+        for s in &v_one_side {
+            println!("{}", s);
+        }
+
+        println!();
+        println!("両方が同じ効果:");
+
+        for s in &v_eq {
+            println!("{}", s);
+        }
+    }
+
     pub fn type_effect_bonus(&self, types: &[Self]) -> f64 {
         let i = types.iter().map(|t| TYPE_EFFECT_MATRIX[*self as usize][*t as usize]).sum::<i8>();
 

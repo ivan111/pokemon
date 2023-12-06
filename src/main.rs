@@ -23,7 +23,7 @@ use crate::types::{NUM_TYPES, TYPE_NAMES, TYPES};
 use crate::evolution::rev_evolutions;
 use crate::utils::{jp_width, jp_fixed_width_string};
 
-const HELP: [[&'static str; 2]; 17] = [
+const HELP: [[&'static str; 2]; 18] = [
     ["q, quit", "終了"],
     ["h, help", "ヘルプ"],
     ["ls", "現在ディレクトリ内のポケモンを一覧表示"],
@@ -41,6 +41,7 @@ const HELP: [[&'static str; 2]; 17] = [
     ["sim", "sl_trディレクトリのポケモンとのバトルをシミュレーション"],
     ["sim1", "sl_trディレクトリのポケモンとのバトルをシミュレーション"],
     ["effect", "相性表を表示"],
+    ["ecross", "相性の対称性を表示"],
 ];
 
 fn main() -> Result<()> {
@@ -181,6 +182,15 @@ fn main() -> Result<()> {
                         }
                     },
 
+                    "ls_moves2" => {
+                        if let Some(dict) = pokepedia::skim_pokepedia() {
+                            if let Some((_, lv, ivs)) = crate::index::calc_top_scp_iv_limited_by_cp(1500, 40.0, dict) {
+                                let p = Pokemon::raw_new(dict, lv, ivs, dict.fast_moves()[0], dict.charge_moves()[0], None);
+                                ls_moves(&p.move_perm());
+                            }
+                        }
+                    },
+
                     "ecp" => {
                         let pokemons = pdir.get(&cd).unwrap();
                         if let Some(poke) = select_pokemon(pokemons) {
@@ -317,6 +327,10 @@ fn main() -> Result<()> {
                         types::Type::print_effect_table(None);
                     },
 
+                    "ecross" => {
+                        types::Type::print_effect_cross();
+                    },
+
                     "" => (),
 
                     _ => {
@@ -374,7 +388,7 @@ fn load_pokemons() -> (HashMap<String, Vec<Pokemon>>, HashMap<String, bool>) {
         let file_name = entry.file_name().to_string_lossy().into_owned();
 
         let pokemons = {
-            let f = File::open(&poke_path.join(file_name.clone())).unwrap();
+            let f = File::open(&poke_path.join(&file_name)).unwrap();
             let mut reader = BufReader::new(f);
             pokemon::load_pokemons(&mut reader).unwrap()
         };
