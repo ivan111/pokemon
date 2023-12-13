@@ -20,10 +20,10 @@ use crate::pokepedia::Pokepedia;
 use crate::pokemon::{Pokemon, IVs, calc_lv, search_near_iv};
 use crate::moves::{FastMove, ChargeMove};
 use crate::types::{NUM_TYPES, TYPE_NAMES, TYPES};
-use crate::evolution::rev_evolutions;
+use crate::evolution::{rev_evolutions, evolutions};
 use crate::utils::{jp_width, jp_fixed_width_string};
 
-const HELP: [[&'static str; 2]; 18] = [
+const HELP: [[&'static str; 2]; 19] = [
     ["q, quit", "終了"],
     ["h, help", "ヘルプ"],
     ["ls", "現在ディレクトリ内のポケモンを一覧表示"],
@@ -38,6 +38,7 @@ const HELP: [[&'static str; 2]; 18] = [
     ["ecp", "指定したポケモンのECPを表示"],
     ["top_scp", "指定したポケモンでCP1500以下でトップのポケモンを表示"],
     ["top", "ECPの高い技の組合せを表示"],
+    ["evo", "指定したポケモンがもし進化したらを表示"],
     ["sim", "sl_trディレクトリのポケモンとのバトルをシミュレーション"],
     ["sim1", "sl_trディレクトリのポケモンとのバトルをシミュレーション"],
     ["effect", "相性表を表示"],
@@ -225,6 +226,26 @@ fn main() -> Result<()> {
                     "top" => {
                         let pokemons = pdir.get(&cd).unwrap();
                         top_ecp(pokemons);
+                    },
+
+                    "evo" => {
+                        let pokemons = pdir.get(&cd).unwrap();
+                        if let Some(poke) = select_pokemon(pokemons) {
+                            for next_dict in evolutions(poke.no()) {
+                                let p = Pokemon::raw_new(next_dict, poke.lv(), poke.ivs(), poke.fast_move(), poke.charge_move1(), poke.charge_move2());
+                                println!("{}", p.format(jp_width(next_dict.name())));
+
+                                for nn_dict in evolutions(next_dict.no()) {
+                                    let p = Pokemon::raw_new(nn_dict, poke.lv(), poke.ivs(), poke.fast_move(), poke.charge_move1(), poke.charge_move2());
+                                    println!("{}", p.format(jp_width(nn_dict.name())));
+
+                                    for nnn_dict in evolutions(nn_dict.no()) {
+                                        let p = Pokemon::raw_new(nnn_dict, poke.lv(), poke.ivs(), poke.fast_move(), poke.charge_move1(), poke.charge_move2());
+                                        println!("{}", p.format(jp_width(nnn_dict.name())));
+                                    }
+                                }
+                            }
+                        }
                     },
 
                     "sim" => {

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use crate::pokepedia::{Pokepedia, pokepedia_by_no, pokepedia_by_name};
+use crate::pokepedia::{Pokepedia, pokepedia_by_no};
 
 pub fn evolutions(no: &str) -> Vec<&'static Pokepedia> {
     let m = EVOLUTION_NO_MAP.get_or_init(|| {
